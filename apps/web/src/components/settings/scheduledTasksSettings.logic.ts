@@ -1,4 +1,4 @@
-import { isWebhookDedupeTemplate } from "@t3tools/contracts";
+import { isWebhookDedupeTemplate, scheduledTaskCronExpressionError } from "@t3tools/contracts";
 import {
   EnvironmentId,
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
@@ -52,7 +52,7 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
   };
 }
 
-export type ScheduleMode = "fixed" | "interval" | "webhook";
+export type ScheduleMode = "fixed" | "interval" | "cron" | "webhook";
 export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
 
 export interface DraftState {
@@ -64,6 +64,7 @@ export interface DraftState {
   readonly intervalMinutes: string;
   readonly timeOfDay: string;
   readonly weekdays: ReadonlySet<number>;
+  readonly cronExpression: string;
   readonly projectId: string;
   readonly threadId: string;
   readonly workspaceMode: WorkspaceMode;
@@ -123,6 +124,11 @@ export function webhookDraftErrors(draft: DraftState) {
       description: "Coalesce window must be whole seconds from 10 to 3600.",
     });
   return errors;
+}
+
+export function cronDraftError(draft: DraftState) {
+  if (draft.scheduleMode !== "cron") return null;
+  return scheduledTaskCronExpressionError(draft.cronExpression);
 }
 
 export function webhookDeliveryLabel(delivery: {
@@ -186,6 +192,10 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
     const everyMs = Math.round(Number(draft.intervalMinutes) * 60_000);
     return { type: "interval", everyMs };
   }
+  if (draft.scheduleMode === "cron") {
+    if (cronDraftError(draft) !== null) return null;
+    return { type: "cron", expression: draft.cronExpression.trim().split(/\s+/).join(" ") };
+  }
   const selectedEveryDay = draft.weekdays.size === 0 || draft.weekdays.size === 7;
   return {
     type: "fixed_time",
@@ -206,12 +216,12 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     title: task.title,
     prompt: task.prompt,
     enabled: task.enabled,
-    scheduleMode:
-      schedule.type === "interval" ? "interval" : schedule.type === "webhook" ? "webhook" : "fixed",
+    scheduleMode: schedule.type === "fixed_time" ? "fixed" : schedule.type,
     intervalMinutes:
       schedule.type === "interval" ? String(Math.max(1, schedule.everyMs / 60_000)) : "15",
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay : "09:00",
     weekdays,
+    cronExpression: schedule.type === "cron" ? schedule.expression : "0 9 * * 1-5",
     projectId: task.projectId,
     threadId: task.threadId ?? "",
     workspaceMode: task.workspaceStrategy.type,

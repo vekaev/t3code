@@ -17,6 +17,7 @@ import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope"
 
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
+  cronDraftError,
   scheduledTaskDefaultModel,
   matchesScheduledTaskScope,
   scheduleFromDraft,
@@ -256,6 +257,37 @@ describe("webhook scheduled tasks", () => {
       }),
     ).toBeNull();
   });
+});
+
+describe("cron scheduled tasks", () => {
+  const cronTask: ScheduledTask = {
+    ...legacyTask,
+    schedule: { type: "cron", expression: "17 0,4,8-20 * * *" },
+  };
+
+  it("opens a cron task as cron and saves the same expression", () => {
+    const draft = taskToDraft(cronTask);
+    expect(draft.scheduleMode).toBe("cron");
+    expect(cronDraftError(draft)).toBeNull();
+    expect(scheduleFromDraft(draft)).toEqual(cronTask.schedule);
+  });
+
+  it("trims the expression and collapses inner whitespace", () => {
+    const draft = taskToDraft(cronTask);
+    expect(scheduleFromDraft({ ...draft, cronExpression: "  0\t9 *  * 1-5 \n" })).toEqual({
+      type: "cron",
+      expression: "0 9 * * 1-5",
+    });
+  });
+
+  it.each(["", "  ", "0 9 * *", "0 0 9 * * 1", "@daily", "60 * * * *", "0 9 L * *", "0 0 30 2 *"])(
+    "reports an error instead of saving %j",
+    (cronExpression) => {
+      const draft = { ...taskToDraft(cronTask), cronExpression };
+      expect(cronDraftError(draft)).not.toBeNull();
+      expect(scheduleFromDraft(draft)).toBeNull();
+    },
+  );
 });
 
 describe("scheduled task model defaults", () => {

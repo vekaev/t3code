@@ -76,6 +76,22 @@ Webhook tasks only run when their URL is called, so they can't be run
 immediately.
 Leaving an edited form asks before discarding unsaved changes.
 
+## Custom schedules
+
+When a fixed time or an interval can't describe when a task should run, choose
+**Custom** as its schedule in **Settings → Scheduled tasks** and enter a cron
+expression. It has five fields: minute, hour, day of the month, month, and
+weekday. Times use the environment's time zone. For example,
+`17 0,4,8-20 * * *` runs at 00:17, 04:17, and every hour from 08:17 to 20:17.
+
+Seconds, shortcuts such as `@daily`, and `L` or `?` aren't supported. When both
+the day of the month and the weekday are set, a day that matches either one
+runs: `0 9 1 * MON` runs on the 1st and on every Monday. If either one starts
+with `*`, such as `*/2`, a day must match both: `0 9 */2 * MON` runs only on
+Mondays with an odd date. Environments on older versions of T3 Code don't offer
+**Custom** until you update them. Agents can also set up a custom schedule when
+you describe it in chat.
+
 ## Webhook automations
 
 In **Settings → Scheduled tasks**, choose **On webhook**

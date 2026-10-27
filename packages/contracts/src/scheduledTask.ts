@@ -1,3 +1,5 @@
+import * as Cron from "effect/Cron";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import {
@@ -43,6 +45,44 @@ const ScheduledTaskFixedTimeSchedule = Schema.Struct({
       description: "Default: every day.",
     }),
   ),
+});
+
+const CRON_FIELD_NAMES = ["Minute", "Hour", "Day of month", "Month", "Weekday"];
+
+function maxDaysInMonth(month: number): number {
+  if (month === 2) return 29;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+export function scheduledTaskCronExpressionError(expression: string): string | null {
+  const fields = expression.trim().split(/\s+/);
+  // effect/Cron reads a sixth leading field as seconds, which would allow sub-minute runs.
+  if (fields.length !== 5) return "Use five fields: minute hour day-of-month month weekday.";
+  const parsed = Cron.parse(expression);
+  if (Result.isFailure(parsed)) {
+    for (const [index, name] of CRON_FIELD_NAMES.entries()) {
+      const alone = Cron.parse(
+        fields.map((field, other) => (other === index ? field : "*")).join(" "),
+      );
+      if (Result.isFailure(alone)) return `${name}: ${alone.failure.message}`;
+    }
+    return parsed.failure.message;
+  }
+  const { days, months, weekdays } = parsed.success;
+  // effect/Cron keeps `and` internal: a day field starting with `*` makes both day fields apply.
+  const daysRequired =
+    weekdays.size === 0 || [fields[2], fields[4]].some((field) => field?.startsWith("*"));
+  const neverRuns =
+    daysRequired &&
+    days.size > 0 &&
+    months.size > 0 &&
+    [...months].every((month) => maxDaysInMonth(month) < Math.min(...days));
+  return neverRuns ? "This schedule never runs." : null;
+}
+
+const ScheduledTaskCronSchedule = Schema.Struct({
+  type: Schema.Literal("cron"),
+  expression: TrimmedNonEmptyString,
 });
 
 const ScheduledTaskWebhookSignatureFields = {
@@ -166,6 +206,7 @@ const ScheduledTaskUpsertWebhookSchedule = Schema.Struct({
 export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
   ScheduledTaskFixedTimeSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskWebhookSchedule,
 ]);
 export type ScheduledTaskSchedule = typeof ScheduledTaskSchedule.Type;
@@ -180,6 +221,12 @@ export const ScheduledTaskUpsertSchedule = Schema.Union([
     }),
   }),
   ScheduledTaskFixedTimeSchedule,
+  Schema.Struct({
+    type: Schema.Literal("cron"),
+    expression: TrimmedNonEmptyString.check(
+      Schema.makeFilter((value: string) => scheduledTaskCronExpressionError(value) ?? true),
+    ),
+  }),
   ScheduledTaskUpsertWebhookSchedule,
 ]);
 export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Type;

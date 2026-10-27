@@ -329,7 +329,7 @@ export function CommandPalette(props: {
         key: "scheduledTasks",
         kind: "action",
         title: "Scheduled tasks",
-        searchTerms: ["schedule", "automations", "recurring"],
+        searchTerms: ["schedule", "automations", "recurring", "cron"],
         run: () => openSettings(navigation, "SettingsScheduledTasks"),
       },
       {

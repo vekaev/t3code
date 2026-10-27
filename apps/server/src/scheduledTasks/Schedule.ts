@@ -1,5 +1,7 @@
 import { MIN_SCHEDULED_TASK_INTERVAL_MS, type ScheduledTaskSchedule } from "@t3tools/contracts";
+import * as Cron from "effect/Cron";
 import * as DateTime from "effect/DateTime";
+import * as Result from "effect/Result";
 
 const MINUTE_MS = 60_000;
 
@@ -7,6 +9,31 @@ function parseTimeOfDay(value: string): { hour: number; minute: number } | null 
   const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value.trim());
   if (!match) return null;
   return { hour: Number(match[1]), minute: Number(match[2]) };
+}
+
+export function normalizeCronExpression(expression: string): string {
+  return expression.trim().split(/\s+/).join(" ");
+}
+
+function parseCron(expression: string, zone?: DateTime.TimeZone): Cron.Cron | null {
+  // A sixth field would be read as seconds; saved schedules are minute-based.
+  if (expression.trim().split(/\s+/).length !== 5) return null;
+  const parsed = Cron.parse(expression, zone);
+  return Result.isSuccess(parsed) ? parsed.success : null;
+}
+
+function nextCronRunAt(expression: string, from: DateTime.DateTime): DateTime.DateTime | null {
+  // Without a named zone, effect/Cron searches at a fixed offset and drifts across DST.
+  const zone = DateTime.isZoned(from) ? from.zone : DateTime.zoneMakeNamedUnsafe("UTC");
+  const cron = parseCron(expression, zone);
+  if (cron === null) return null;
+  try {
+    const next = DateTime.makeZonedUnsafe(Cron.next(cron, from), { timeZone: zone });
+    return DateTime.toEpochMillis(next) > DateTime.toEpochMillis(from) ? next : null;
+  } catch {
+    // effect/Cron throws when no date matches, such as February 30.
+    return null;
+  }
 }
 
 export function nextScheduledRunAt(
@@ -18,6 +45,7 @@ export function nextScheduledRunAt(
     // Intervals advance elapsed time, including across daylight-saving changes.
     return DateTime.addDuration(from, Math.max(schedule.everyMs, MIN_SCHEDULED_TASK_INTERVAL_MS));
   }
+  if (schedule.type === "cron") return nextCronRunAt(schedule.expression, from);
 
   const time = parseTimeOfDay(schedule.timeOfDay);
   if (time === null) return null;
@@ -48,6 +76,14 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
     return b.type === "interval" && a.everyMs === b.everyMs;
   }
   if (a.type === "webhook") return b.type === "webhook";
+  if (a.type === "cron") {
+    if (b.type !== "cron") return false;
+    const aCron = parseCron(a.expression);
+    const bCron = parseCron(b.expression);
+    return aCron !== null && bCron !== null
+      ? Cron.Equivalence(aCron, bCron)
+      : normalizeCronExpression(a.expression) === normalizeCronExpression(b.expression);
+  }
   if (b.type !== "fixed_time") return false;
   // Compare parsed times so padded-hour edits do not reschedule pending runs.
   const aTime = parseTimeOfDay(a.timeOfDay);
@@ -61,13 +97,13 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
   );
 }
 
-const MISSED_FIXED_TIME_GRACE_MS = 10 * MINUTE_MS;
+const MISSED_CALENDAR_RUN_GRACE_MS = 10 * MINUTE_MS;
 
-export function isMissedFixedTimeRun(
+export function isMissedCalendarRun(
   schedule: ScheduledTaskSchedule,
   dueAt: DateTime.DateTime,
   now: DateTime.DateTime,
 ): boolean {
-  if (schedule.type !== "fixed_time") return false;
-  return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_FIXED_TIME_GRACE_MS;
+  if (schedule.type !== "fixed_time" && schedule.type !== "cron") return false;
+  return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_CALENDAR_RUN_GRACE_MS;
 }

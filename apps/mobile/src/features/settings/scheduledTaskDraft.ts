@@ -1,4 +1,4 @@
-import { isWebhookDedupeTemplate } from "@t3tools/contracts";
+import { isWebhookDedupeTemplate, scheduledTaskCronExpressionError } from "@t3tools/contracts";
 import type {
   ModelSelection,
   ServerConfig,
@@ -51,10 +51,11 @@ export function scheduledTaskDefaultModel(
 }
 
 export type ScheduleDraft = {
-  readonly mode: "fixed_time" | "interval" | "webhook";
+  readonly mode: "fixed_time" | "interval" | "cron" | "webhook";
   readonly timeOfDay: string;
   readonly weekdays: ReadonlyArray<number>;
   readonly intervalMinutes: string;
+  readonly cronExpression: string;
   readonly signature: ScheduledTaskWebhookSignature | null;
   readonly maxDeliveryAgeMinutes: string;
   readonly replayKey: string;
@@ -70,6 +71,7 @@ export const DEFAULT_SCHEDULE: ScheduleDraft = {
   timeOfDay: "09:00",
   weekdays: [1, 2, 3, 4, 5],
   intervalMinutes: "15",
+  cronExpression: "0 9 * * 1-5",
   signature: null,
   maxDeliveryAgeMinutes: "",
   replayKey: "",
@@ -95,6 +97,8 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
         mode: "interval",
         intervalMinutes: String(Math.max(1, task.schedule.everyMs / 60_000)),
       };
+    case "cron":
+      return { ...DEFAULT_SCHEDULE, mode: "cron", cronExpression: task.schedule.expression };
     case "webhook":
       return {
         ...DEFAULT_SCHEDULE,
@@ -167,6 +171,12 @@ export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSche
     const everyMs = Math.round(minutes * 60_000);
     return minutes >= 1 && Number.isSafeInteger(everyMs) ? { type: "interval", everyMs } : null;
   }
+  if (draft.mode === "cron") {
+    const expression = draft.cronExpression.trim().split(/\s+/).join(" ");
+    return scheduledTaskCronExpressionError(expression) === null
+      ? { type: "cron", expression }
+      : null;
+  }
   const weekdays = [...new Set(draft.weekdays)].sort((a, b) => a - b);
   if (
     !/^([01]?\d|2[0-3]):[0-5]\d$/.test(draft.timeOfDay) ||
@@ -213,6 +223,7 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.schedule.timeOfDay,
     [...draft.schedule.weekdays].sort((a, b) => a - b),
     draft.schedule.intervalMinutes,
+    draft.schedule.cronExpression,
     draft.schedule.maxDeliveryAgeMinutes,
     draft.schedule.replayKey,
     draft.schedule.coalesceKey,

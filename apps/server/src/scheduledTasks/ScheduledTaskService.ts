@@ -50,7 +50,12 @@ import * as Metrics from "../observability/Metrics.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
-import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import {
+  isMissedCalendarRun,
+  isSameSchedule,
+  nextScheduledRunAt,
+  normalizeCronExpression,
+} from "./Schedule.ts";
 import {
   redactHeaders,
   redactQuery,
@@ -1039,7 +1044,7 @@ export const layer = Layer.effect(
         due,
         ({ task, dueAt }) =>
           Effect.suspend(() =>
-            isMissedFixedTimeRun(task.schedule, dueAt, now)
+            isMissedCalendarRun(task.schedule, dueAt, now)
               ? rescheduleMissedRun(task, now)
               : runTask(task, "scheduled"),
           ).pipe(
@@ -1178,7 +1183,12 @@ export const layer = Layer.effect(
                     : undefined),
               ),
             }
-          : input.schedule;
+          : input.schedule.type === "cron"
+            ? { type: "cron", expression: normalizeCronExpression(input.schedule.expression) }
+            : input.schedule;
+      if (schedule.type === "cron" && nextScheduledRunAt(schedule, now) === null) {
+        return yield* taskError("This cron expression never runs.", { taskId: id });
+      }
       const webhook =
         input.schedule.type === "webhook"
           ? yield* Effect.gen(function* () {

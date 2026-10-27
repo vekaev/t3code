@@ -63,7 +63,9 @@ function environment() {
     environmentId,
     label: "Laptop",
     connection: { phase: state.connected ? "connected" : "disconnected" },
-    serverConfig: state.connected ? { environment: { platform: "linux" } } : null,
+    serverConfig: state.connected
+      ? { environment: { platform: "linux", capabilities: { scheduledTaskCron: true } } }
+      : null,
   };
 }
 
@@ -194,5 +196,22 @@ describe("ScheduledTasksSettings", () => {
 
     await expect.element(dialog.getByRole("heading", { name: "New task" })).toBeInTheDocument();
     await expect.element(name).toHaveValue("My draft");
+  });
+
+  it("explains a custom schedule's problem while it is typed", async () => {
+    state.connected = true;
+    state.tasksLoaded = true;
+    await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+    const dialog = page.getByRole("dialog");
+    await userEvent.click(dialog.getByRole("button", { name: "Custom" }));
+    const expression = dialog.getByRole("textbox", { name: /^Cron expression/ });
+
+    await userEvent.fill(expression, "60 * * * *");
+    await expect
+      .element(dialog.getByText("Minute: Expected a value between 0 and 59"))
+      .toBeVisible();
+
+    await userEvent.fill(expression, "17 0,4,8-20 * * *");
+    await expect.element(dialog.getByText("Runs in this environment's time zone.")).toBeVisible();
   });
 });
