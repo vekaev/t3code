@@ -7,6 +7,7 @@ import {
   ProjectId,
   ProjectScript,
   ProjectTrackedFolders,
+  StoredThreadFolder,
   ThreadEnvMode,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -44,6 +45,7 @@ export const ProjectRow = Schema.Struct({
   trackedFolders: ProjectTrackedFolders,
   pinnedAt: Schema.NullOr(IsoDateTime),
   archivedAt: Schema.NullOr(IsoDateTime),
+  threadFolders: Schema.Array(StoredThreadFolder),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -58,6 +60,7 @@ const ProjectDbRow = Schema.Struct({
   projectIcon: Schema.NullOr(Schema.fromJsonString(StoredProjectIcon)),
   scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
   trackedFolders: Schema.fromJsonString(ProjectTrackedFolders),
+  threadFolders: Schema.fromJsonString(Schema.Array(StoredThreadFolder)),
 });
 
 function toShell(row: ProjectRow): OrchestrationProjectShell {
@@ -76,6 +79,7 @@ function toShell(row: ProjectRow): OrchestrationProjectShell {
     trackedFolders: row.trackedFolders,
     pinnedAt: row.pinnedAt,
     archivedAt: row.archivedAt,
+    ...(row.threadFolders.length === 0 ? {} : { threadFolders: row.threadFolders }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -135,6 +139,7 @@ export const make = Effect.gen(function* () {
         tracked_folders_json AS "trackedFolders",
         pinned_at AS "pinnedAt",
         archived_at AS "archivedAt",
+        COALESCE(thread_folders_json, '[]') AS "threadFolders",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         deleted_at AS "deletedAt"
@@ -169,6 +174,7 @@ export const make = Effect.gen(function* () {
             tracked_folders_json,
             pinned_at,
             archived_at,
+            thread_folders_json,
             created_at,
             updated_at,
             deleted_at
@@ -187,6 +193,7 @@ export const make = Effect.gen(function* () {
             ${encoded.trackedFolders},
             ${encoded.pinnedAt},
             ${encoded.archivedAt},
+            ${encoded.threadFolders},
             ${encoded.createdAt},
             ${encoded.updatedAt},
             ${encoded.deletedAt}
@@ -209,6 +216,7 @@ export const make = Effect.gen(function* () {
             tracked_folders_json = excluded.tracked_folders_json,
             pinned_at = excluded.pinned_at,
             archived_at = excluded.archived_at,
+            thread_folders_json = excluded.thread_folders_json,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at,
             deleted_at = excluded.deleted_at
@@ -261,6 +269,7 @@ export const make = Effect.gen(function* () {
           trackedFolders: payload.trackedFolders ?? [],
           pinnedAt: null,
           archivedAt: null,
+          threadFolders: [],
           createdAt: payload.createdAt,
           updatedAt: payload.updatedAt,
           deletedAt: null,
@@ -294,6 +303,7 @@ export const make = Effect.gen(function* () {
         ...(payload.trackedFolders === undefined ? {} : { trackedFolders: payload.trackedFolders }),
         ...(payload.pinnedAt === undefined ? {} : { pinnedAt: payload.pinnedAt }),
         ...(payload.archivedAt === undefined ? {} : { archivedAt: payload.archivedAt }),
+        ...(payload.threadFolders === undefined ? {} : { threadFolders: payload.threadFolders }),
         updatedAt: payload.updatedAt,
       }).pipe(mapError("apply"));
     },

@@ -34,6 +34,7 @@ import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
 import * as CheckpointService from "./CheckpointService.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EffectWorker from "./EffectWorker.ts";
+import * as ForkFolderService from "./ForkFolderService.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
@@ -169,6 +170,10 @@ function layerExecutorFor(input: {
       ThreadTitleRegenerationService.ThreadTitleRegenerationService.of({
         execute: () => Effect.void,
       }),
+    ),
+    Layer.succeed(
+      ForkFolderService.ForkFolderService,
+      ForkFolderService.ForkFolderService.of({ place: () => Effect.void }),
     ),
   );
   return EffectWorker.layerExecutor.pipe(

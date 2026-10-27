@@ -1,6 +1,7 @@
 import { closestCenter, type CollisionDetection, type Modifier } from "@dnd-kit/core";
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 import {
+  isSidebarFolderBlockItem,
   resolveSidebarDropTarget,
   sidebarListItemId,
   sidebarMarkerId,
@@ -124,12 +125,23 @@ export function createSidebarSortingStrategy(input: {
     let cardHeight = input.cardHeight;
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
+    // The folder block holds still; only the dragged thread can leave it.
+    const folderBlock: SidebarListItem[] = [];
     for (const [index, item] of items.entries()) {
       if (item.kind === "marker") {
         if (isShelfHeader(item)) {
           const height = rects[index]?.height;
           if (height) headerScale ??= height / 32;
         }
+        continue;
+      }
+      if (item.kind === "folder") {
+        folderBlock.push(item);
+        continue;
+      }
+      if (isSidebarFolderBlockItem(item)) {
+        cardHeight ??= rects[index]?.height;
+        if (item.key !== active.key) folderBlock.push(item);
         continue;
       }
       if (item.section === "pinned" || item.section === "active" || item.section === "working")
@@ -175,6 +187,7 @@ export function createSidebarSortingStrategy(input: {
     marker("pinned-header");
     projected.push(...groups.pinned);
     marker("pinned-divider");
+    projected.push(...folderBlock);
     section("active");
     if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
       marker("working-header");

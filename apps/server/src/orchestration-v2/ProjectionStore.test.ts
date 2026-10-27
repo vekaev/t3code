@@ -27,6 +27,7 @@ import {
   RuntimeRequestId,
   RunAttemptId,
   RunId,
+  ThreadFolderId,
   ThreadId,
   TurnItemId,
   type ThreadPullRequestLink,
@@ -2704,6 +2705,18 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
   assert.deepEqual(reordered.updatedAt, createdAt);
   assert.equal(reordered.thread.activeOrderKey, "a");
 
+  const threadFolderId = ThreadFolderId.make("folder:background-updates");
+  yield* store.apply({
+    id: EventId.make("event:background-updates:folder-set"),
+    type: "thread.folder-set",
+    threadId,
+    occurredAt: DateTime.add(createdAt, { minutes: 51 }),
+    payload: { ...reordered.thread, threadFolderId },
+  });
+  const filed = yield* readActivity;
+  assert.equal(filed.thread.threadFolderId, threadFolderId);
+  assert.equal((yield* store.getThreadShell(threadId))?.threadFolderId, threadFolderId);
+
   // MCP pins read the stored pin key from the active shell index.
   yield* store.apply({
     id: EventId.make("event:background-updates:pinned"),
@@ -2711,7 +2724,7 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
     threadId,
     occurredAt: DateTime.add(createdAt, { minutes: 52 }),
     payload: {
-      ...reordered.thread,
+      ...filed.thread,
       pinnedAt: DateTime.add(createdAt, { minutes: 52 }),
       pinOrderKey: "m",
     },

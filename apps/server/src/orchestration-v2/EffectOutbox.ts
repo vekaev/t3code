@@ -141,6 +141,11 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     type: Schema.Literal("delegated-tasks.stop"),
     reason: Schema.optional(Schema.String),
   }),
+  Schema.Struct({
+    type: Schema.Literal("fork-folder.place"),
+    sourceThreadId: ThreadId,
+    threadId: ThreadId,
+  }),
 ]);
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;
 
@@ -156,6 +161,7 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "thread-content.purge",
   "thread-title.generate",
   "delegated-tasks.stop",
+  "fork-folder.place",
 ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
 
 export const PROCESS_BOUND_EFFECT_TYPES = [

@@ -18,7 +18,9 @@ const SHORT_SUMMARY = {
   Snoozed: msg("{count, plural, =1 {Snoozed,} other {Snoozed {count},}}"),
   Unpinned: msg("{count, plural, =1 {Unpinned,} other {Unpinned {count},}}"),
   Archived: msg("{count, plural, =1 {Archived,} other {Archived {count},}}"),
+  Moved: msg("{count, plural, =1 {Moved,} other {Moved {count},}}"),
   Discarded: msg("{count, plural, =1 {Discarded,} other {Discarded {count},}}"),
+  Deleted: msg("{count, plural, =1 {Deleted folder,} other {Deleted {count} folders,}}"),
 };
 
 /** Fills the free space in the sidebar footer's utility row, so it never moves or covers the list. */

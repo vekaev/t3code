@@ -38,6 +38,7 @@ const layerFor = (project?: {
                 createdAt: "2026-06-21T00:00:00.000Z",
                 updatedAt: "2026-06-21T00:00:00.000Z",
                 deletedAt: null,
+                threadFolders: [],
                 ...project,
               }),
       }),

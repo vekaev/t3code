@@ -32,6 +32,10 @@ describe("mutateProjectWithClone", () => {
         {
           create: () => Effect.die("unused"),
           update: () => Effect.die("unused"),
+          createThreadFolder: () => Effect.die("unused"),
+          updateThreadFolder: () => Effect.die("unused"),
+          deleteThreadFolder: () => Effect.die("unused"),
+          restoreThreadFolder: () => Effect.die("unused"),
           delete: () => Effect.fail(rejected),
         },
         { discard: () => Effect.die("must not discard a project that still exists") },
@@ -50,6 +54,10 @@ describe("mutateProjectWithClone", () => {
       const projects = {
         create: () => Effect.die("unused"),
         update: () => Effect.die("unused"),
+        createThreadFolder: () => Effect.die("unused"),
+        updateThreadFolder: () => Effect.die("unused"),
+        deleteThreadFolder: () => Effect.die("unused"),
+        restoreThreadFolder: () => Effect.die("unused"),
         // The delete event is already durable while its post-commit cleanup runs.
         delete: () =>
           Deferred.succeed(committed, undefined).pipe(

@@ -645,6 +645,8 @@ it.effect.each([
           ProviderAdapterRegistry.layerFromAdapters(
             target === claude ? [claude] : [claude, target],
           ),
+          // drain() alone runs the effects, so a fork's folder placement cannot race the start.
+          { runEffectWorker: false },
         ),
       ),
     );

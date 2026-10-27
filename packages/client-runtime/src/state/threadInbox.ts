@@ -120,6 +120,7 @@ type TrackedInboxThread = WorkingThreadInput &
       | "snoozedAt"
       | "snoozedUntil"
       | "activeOrderKey"
+      | "threadFolderId"
       | "pendingGuestMessageCount"
     >
   >;
@@ -223,6 +224,7 @@ export function createInboxReturnTracker() {
                 thread.snoozedAt,
                 thread.snoozedUntil,
                 thread.activeOrderKey,
+                thread.threadFolderId,
               ])
             : null;
         const actionable =

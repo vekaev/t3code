@@ -39,6 +39,7 @@ import * as EffectOutbox from "../EffectOutbox.ts";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as EventSink from "../EventSink.ts";
 import * as ThreadViewers from "../ThreadViewers.ts";
+import * as ForkFolderService from "../ForkFolderService.ts";
 import * as EventStore from "../EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../Orchestrator.ts";
@@ -547,6 +548,14 @@ export function layerWithRegistry<Error>(
       }),
     }),
   );
+  const layerForkFolderTest = Layer.succeed(
+    ForkFolderService.ForkFolderService,
+    ForkFolderService.ForkFolderService.of({
+      place: Effect.fn("ForkFolderService.place")(function () {
+        return Effect.void;
+      }),
+    }),
+  );
   const layerOrchestratorProvided = Orchestrator.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -602,6 +611,7 @@ export function layerWithRegistry<Error>(
         layerProviderTurnStartServiceProvided,
         layerRuntimeRequestServiceProvided,
         layerThreadTitleRegenerationTest,
+        layerForkFolderTest,
         layerServerSettings,
         layerThreadManagementProvided,
         layerStores,

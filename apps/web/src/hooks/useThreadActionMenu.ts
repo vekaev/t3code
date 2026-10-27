@@ -10,6 +10,11 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import {
+  canCreateThreadFolder,
+  resolveThreadFolder,
+  threadFolderTree,
+} from "@t3tools/client-runtime/state/thread-folders";
+import {
   AuthOrchestrationOperateScope,
   type ScopedThreadRef,
   type ThreadId,
@@ -22,6 +27,7 @@ import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.sn
 import {
   buildThreadActionMenuItems,
   isThreadTriageAction,
+  resolveMoveToFolderChoice,
   threadActionRequiresOperate,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
@@ -36,6 +42,8 @@ import { readEnvironmentScope } from "../state/session";
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsThreadFolders,
+  readProject,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -53,6 +61,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import { useThreadFolderActions } from "./useThreadFolderActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -94,7 +103,9 @@ export function useThreadActionMenu(input: {
     deleteThread,
     markThreadUnread,
     turnThreadIntoProject,
+    moveThreadToFolder,
   } = useThreadActions();
+  const { createThreadFolder } = useThreadFolderActions();
   const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
     reportFailure: false,
   });
@@ -102,6 +113,7 @@ export function useThreadActionMenu(input: {
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  const boringSidebarEnabled = useClientSettings((s) => s.boringSidebarEnabled);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onError: (error) => failureToast(m(msg("Failed to copy path")), error),
   });
@@ -133,6 +145,16 @@ export function useThreadActionMenu(input: {
     };
     const isRegeneratingTitle = thread.titleRegeneration != null;
     const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
+    const projectRef = scopeProjectRef(threadRef.environmentId, thread.projectId);
+    // The boring sidebar shows no folder rows, and archived threads cannot move.
+    const project =
+      !boringSidebarEnabled &&
+      thread.archivedAt === null &&
+      readEnvironmentSupportsThreadFolders(threadRef.environmentId)
+        ? readProject(projectRef)
+        : null;
+    const currentFolderId =
+      resolveThreadFolder(project?.threadFolders, thread.threadFolderId)?.id ?? null;
     const items = buildThreadActionMenuItems({
       canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
       canTriage: threadTriagePermitted(threadRef.environmentId),
@@ -152,6 +174,14 @@ export function useThreadActionMenu(input: {
       snoozePresets,
       canShareWithGuest,
       canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+      folders: project
+        ? {
+            tree: threadFolderTree(project.threadFolders),
+            currentFolderId,
+            inFolder: currentFolderId !== null,
+            canCreate: canCreateThreadFolder(project.threadFolders, null),
+          }
+        : null,
     });
     const run = async (action: ThreadActionMenuId) => {
       const api = readLocalApi();
@@ -194,6 +224,22 @@ export function useThreadActionMenu(input: {
           failureToast(title, squashAtomCommandFailure(result));
         }
       };
+      if (action === "new-folder") {
+        const folderId = await createThreadFolder(projectRef, null);
+        if (folderId !== null) {
+          await reportFailure(m(msg("Failed to move thread")), () =>
+            moveThreadToFolder(threadRef, folderId, { deleteFolderOnUndo: true }),
+          );
+        }
+        return;
+      }
+      const folderId = resolveMoveToFolderChoice(action);
+      if (folderId !== undefined) {
+        await reportFailure(m(msg("Failed to move thread")), () =>
+          moveThreadToFolder(threadRef, folderId),
+        );
+        return;
+      }
       switch (action) {
         case "find":
           onFind?.(threadRef);

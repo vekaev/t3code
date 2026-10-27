@@ -39,6 +39,18 @@ While enabled, Active is sorted by most recent return (manual reordering is paus
 
 Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
 
+### Organize threads into folders
+
+On web and desktop, group a project's threads into folders, and folders into subfolders up to six levels deep.
+
+- **Move**: From a thread's menu in the sidebar or the chat header, choose **Move to folder**, then pick a folder, or choose **New folder…** and type its name. Select several threads from one project to move them together. **Remove from folder** returns a thread to the active list. Each move shows **Undo**, which also removes a folder you made for that move.
+- **Collapse**: Folders list above your other active threads. Click a folder to collapse it; a collapsed folder shows how many threads it holds, marks one that needs you, and keeps the thread you have open visible. Each device remembers which folders you collapsed.
+- **Edit**: Right-click a folder to add a subfolder, rename it, or change its icon. **Delete folder** keeps its threads and subfolders: they move up one level, and **Undo** restores the folder.
+- **Forks**: Forking a thread, with **Fork from this response** or by an agent, creates a subfolder named after the original thread inside the folder it was in, and moves the original and the fork into it. Later forks of either thread go into the same subfolder. If you move the original out of it, its next fork starts a new subfolder where the original is now. You can rename or delete it like any other folder.
+- **Other sections and search**: Pinned, snoozed, settled, and working threads stay in their sections and show their folder's name. Search lists matching threads without folders. Threads inside a folder keep the active list's order: dragging one can pin or settle it, but can't reorder it or move it into or out of a folder.
+- **Projects and machines**: Folders belong to one project on one machine. With **All projects** selected, or whenever folders from more than one project show together, each project's folders appear under its name. Folders need an updated server, and the mobile app shows threads without them.
+- **Boring sidebar**: With **Boring sidebar (group by project)** on, threads list in their project's folder and show their folder's name; turn it off to move threads or change folders.
+
 ## Settle, snooze, and archive
 
 | Action      | When to use          | Effect                                                                                                                                         |

@@ -91,6 +91,7 @@ export const layerTaskFoldersWithGit = (
     deletedAt: null,
     workspaceRoot: state.workspaceRoot,
     trackedFolders: state.trackedFolders,
+    threadFolders: [],
   });
   return TaskFolders.layer.pipe(
     Layer.provideMerge(

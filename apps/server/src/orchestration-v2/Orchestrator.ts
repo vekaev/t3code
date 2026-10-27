@@ -665,6 +665,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.pin.reorder":
     case "thread.active.reorder":
     case "thread.tag.set":
+    case "thread.folder.set":
     case "thread.visit":
     case "thread.mark-unread":
     case "thread.metadata.update":
@@ -785,6 +786,27 @@ function delegatedTasksStopEffect(command: {
     request: {
       type: "delegated-tasks.stop",
       ...(command.reason === undefined ? {} : { reason: command.reason }),
+    },
+  };
+}
+
+function forkFolderPlacementEffect(
+  command: {
+    readonly commandId: CommandId;
+    readonly sourceThreadId: ThreadId;
+    readonly targetThreadId: ThreadId;
+  },
+  rootThreadId: ThreadId,
+): PendingOrchestrationEffectV2 {
+  return {
+    id: `effect:${command.commandId}:fork-folder.place`,
+    commandId: command.commandId,
+    // One lane per lineage, so two forks of a family never both make its folder.
+    threadId: rootThreadId,
+    request: {
+      type: "fork-folder.place",
+      sourceThreadId: command.sourceThreadId,
+      threadId: command.targetThreadId,
     },
   };
 }
@@ -4474,6 +4496,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.pin.reorder"
           | "thread.tag.set"
           | "thread.active.reorder"
+          | "thread.folder.set"
           | "thread.mark-unread"
           | "thread.metadata.update"
           | "thread.pull-request.link"
@@ -4636,6 +4659,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.type === "thread.unpin" ||
         command.type === "thread.pin.reorder" ||
         command.type === "thread.active.reorder" ||
+        command.type === "thread.folder.set" ||
         command.type === "thread.pull-request.sync") &&
       thread.archivedAt !== null
     ) {
@@ -4662,6 +4686,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: `Thread ${command.threadId} is not active and cannot be reordered.`,
       });
+    }
+    if (command.type === "thread.folder.set" && command.threadFolderId !== null) {
+      const { threadFolderId } = command;
+      const project = yield* projects.get(thread.projectId).pipe(mapDispatchError(command));
+      // A deleted folder is allowed: its threads show one level up until it is restored.
+      const folder = Option.getOrUndefined(project)?.threadFolders.find(
+        (candidate) => candidate.id === threadFolderId,
+      );
+      if (folder === undefined) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Folder ${threadFolderId} is not a folder in project ${thread.projectId}.`,
+        });
+      }
     }
     if (command.type === "thread.pull-request.sync") {
       const project = yield* projects.get(command.projectId).pipe(mapDispatchError(command));
@@ -5187,6 +5226,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               : current.filter((tag) => tag !== command.tag),
           };
         }
+        case "thread.folder.set":
+          return {
+            ...thread,
+            threadFolderId: command.threadFolderId,
+            updatedAt: thread.updatedAt,
+          };
         case "thread.mark-unread": {
           // Retire the wake before rewinding the visit, preserving its settlement timer.
           const snoozeExpired =
@@ -5655,6 +5700,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.active-reordered" as const;
         case "thread.tag.set":
           return "thread.tags-updated" as const;
+        case "thread.folder.set":
+          return "thread.folder-set" as const;
         case "thread.mark-unread":
           return "thread.marked-unread" as const;
         case "thread.metadata.update":
@@ -6027,7 +6074,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       threadId: command.threadId,
       providerInstanceId: thread.providerInstanceId,
       occurredAt: now,
-      payload: { ...thread, projectId: command.projectId, worktreePath: null, updatedAt: now },
+      // Folders belong to the old project, so the thread arrives unfiled.
+      payload: {
+        ...thread,
+        projectId: command.projectId,
+        worktreePath: null,
+        threadFolderId: null,
+        updatedAt: now,
+      },
     });
   });
 
@@ -6109,6 +6163,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const dispatchThreadFork = Effect.fn("orchestrationV2.dispatch.threadFork")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "thread.fork" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
     yield* Effect.annotateCurrentSpan({
       "orchestration_v2.command_id": command.commandId,
@@ -6237,6 +6292,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       occurredAt: now,
       payload: transfer,
     });
+    // The sidebar does not list side chats, so they never pull their source into a folder.
+    if (command.sideChat !== true) {
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        forkFolderPlacementEffect(command, targetThread.lineage.rootThreadId),
+      ]);
+    }
   });
 
   const dispatchThreadMergeBack = Effect.fn("orchestrationV2.dispatch.threadMergeBack")(function* (
@@ -16203,6 +16265,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.pin.reorder":
       case "thread.active.reorder":
       case "thread.tag.set":
+      case "thread.folder.set":
       case "thread.mark-unread":
       case "thread.pull-request.link":
       case "thread.pull-request.unlink":
@@ -16442,7 +16505,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* dispatchInterruptUnresponsive(command, events);
         break;
       case "thread.fork":
-        yield* dispatchThreadFork(command, events);
+        yield* dispatchThreadFork(command, events, effects);
         break;
       case "thread.merge_back":
         yield* dispatchThreadMergeBack(command, events);

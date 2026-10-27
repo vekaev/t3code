@@ -80,6 +80,7 @@ import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
+import * as ForkFolderService from "./ForkFolderService.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -1507,6 +1508,7 @@ function layerStartEffectWorker(
         Layer.mock(ThreadManagementService.ThreadManagementService)({}),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
         Layer.mock(ProjectionMaintenance.ProjectionMaintenanceV2)({}),
+        Layer.mock(ForkFolderService.ForkFolderService)({}),
         ServerSettings.layerTest(),
       ),
     ),

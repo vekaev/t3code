@@ -38,9 +38,11 @@ function layout(
     const height =
       item.kind === "thread"
         ? (item.section === "pinned" || item.section === "active" ? cardHeight : 36) * scale
-        : item.marker === "pinned-header" || item.marker === "pinned-divider"
-          ? 0
-          : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
+        : item.kind === "folder"
+          ? 32 * scale
+          : item.marker === "pinned-header" || item.marker === "pinned-divider"
+            ? 0
+            : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
     const rect = { top, height, bottom: top + height, left: 0, right: 260, width: 260 };
     top += height + 1;
     return rect;
@@ -220,6 +222,29 @@ describe("sidebar collision detection", () => {
 });
 
 describe("sidebar drag projection", () => {
+  it("holds the folder block together and lands a drop on it below the block", () => {
+    const folder: SidebarListItem = { kind: "folder", key: "env:plans" };
+    const items: SidebarListItem[] = [
+      pinnedHeader,
+      thread("p", "pinned"),
+      divider,
+      folder,
+      { kind: "thread", key: "f1", section: "active", depth: 1 },
+      marker("active-placeholder"),
+      thread("a1", "active"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const over = sidebarListItemId(folder);
+    const { rects } = layout(items, "p", over);
+    const moves = preview({ items, settledOrder: [], settledExpanded: true }, "p", over);
+    const top = (id: string) =>
+      rects[items.findIndex((item) => sidebarListItemId(item) === id)]!.top + moves.get(id)!.y;
+    expect(moves.get(over)?.y).toBe(moves.get("f1")?.y);
+    // The pin opens its gap between the folder block and the loose thread.
+    expect(top("a1") - top("f1")).toBe(2 * (82 + 1));
+  });
+
   it.each([
     ["a2", "a1"],
     ["p", "a1"],
