@@ -4,8 +4,11 @@ import {
   ProjectId,
   type Project,
   type ProjectCreatePayload,
+  type ProjectThreadFolderCreatePayload,
+  type ProjectThreadFolderUpdatePayload,
   type ProjectUpdatePayload,
   type ProjectSnapshot,
+  type ThreadFolderId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
@@ -46,6 +49,23 @@ export interface ProjectUpdateInput extends ProjectUpdatePayload {
 }
 
 export interface ProjectBootstrapInput extends ProjectCreateInput {}
+
+export interface ProjectThreadFolderCreateInput extends ProjectThreadFolderCreatePayload {
+  readonly commandId: CommandId;
+  readonly projectId: ProjectId;
+  readonly forkRootThreadId?: ThreadId;
+}
+
+export interface ProjectThreadFolderUpdateInput extends ProjectThreadFolderUpdatePayload {
+  readonly commandId: CommandId;
+  readonly projectId: ProjectId;
+}
+
+export interface ProjectThreadFolderInput {
+  readonly commandId: CommandId;
+  readonly projectId: ProjectId;
+  readonly folderId: ThreadFolderId;
+}
 
 export interface ProjectDeleteInput {
   readonly commandId: CommandId;
@@ -123,6 +143,19 @@ export class ProjectService extends Context.Service<
     >;
     readonly update: (input: ProjectUpdateInput) => Effect.Effect<Project, ProjectServiceError>;
     readonly delete: (input: ProjectDeleteInput) => Effect.Effect<Project, ProjectServiceError>;
+    readonly createThreadFolder: (
+      input: ProjectThreadFolderCreateInput,
+    ) => Effect.Effect<Project, ProjectServiceError>;
+    readonly updateThreadFolder: (
+      input: ProjectThreadFolderUpdateInput,
+    ) => Effect.Effect<Project, ProjectServiceError>;
+    /** Leaves a tombstone, so what the folder held shows one level up until it is restored. */
+    readonly deleteThreadFolder: (
+      input: ProjectThreadFolderInput,
+    ) => Effect.Effect<Project, ProjectServiceError>;
+    readonly restoreThreadFolder: (
+      input: ProjectThreadFolderInput,
+    ) => Effect.Effect<Project, ProjectServiceError>;
     readonly getById: (
       projectId: ProjectId,
       options?: { readonly includeDeleted?: boolean },
@@ -179,6 +212,7 @@ export const make = Effect.gen(function* () {
     autoPull: row.autoPull,
     projectIcon: row.projectIcon,
     scripts: row.scripts,
+    ...(row.threadFolders.length === 0 ? {} : { threadFolders: row.threadFolders }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -226,7 +260,10 @@ export const make = Effect.gen(function* () {
     const { projectId } = command;
     const dispatchError = (cause: unknown) =>
       new ProjectOperationError({ operation: "dispatch-project-command", projectId, cause });
-    const workspaceRoot = command.type === "project.delete" ? undefined : command.workspaceRoot;
+    const workspaceRoot =
+      command.type === "project.create" || command.type === "project.meta.update"
+        ? command.workspaceRoot
+        : undefined;
     const planAndCommit = Effect.gen(function* () {
       const project = Option.getOrUndefined(yield* readRow(projectId, { includeDeleted: true }));
       const workspaceOwner =
@@ -393,6 +430,51 @@ export const make = Effect.gen(function* () {
       return yield* readCommitted(input.projectId);
     },
   );
+
+  const createThreadFolder: ProjectService["Service"]["createThreadFolder"] = Effect.fn(
+    "ProjectService.createThreadFolder",
+  )(function* (input) {
+    yield* commit({
+      type: "project.thread-folder.create",
+      commandId: input.commandId,
+      projectId: input.projectId,
+      folderId: input.folderId,
+      parentFolderId: input.parentFolderId,
+      name: input.name,
+      ...(input.icon === undefined ? {} : { icon: input.icon }),
+      ...(input.forkRootThreadId === undefined ? {} : { forkRootThreadId: input.forkRootThreadId }),
+    });
+    return yield* readCommitted(input.projectId);
+  });
+
+  const updateThreadFolder: ProjectService["Service"]["updateThreadFolder"] = Effect.fn(
+    "ProjectService.updateThreadFolder",
+  )(function* (input) {
+    yield* commit({
+      type: "project.thread-folder.update",
+      commandId: input.commandId,
+      projectId: input.projectId,
+      folderId: input.folderId,
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.icon === undefined ? {} : { icon: input.icon }),
+      ...(input.parentFolderId === undefined ? {} : { parentFolderId: input.parentFolderId }),
+    });
+    return yield* readCommitted(input.projectId);
+  });
+
+  const deleteThreadFolder: ProjectService["Service"]["deleteThreadFolder"] = Effect.fn(
+    "ProjectService.deleteThreadFolder",
+  )(function* (input) {
+    yield* commit({ type: "project.thread-folder.delete", ...input });
+    return yield* readCommitted(input.projectId);
+  });
+
+  const restoreThreadFolder: ProjectService["Service"]["restoreThreadFolder"] = Effect.fn(
+    "ProjectService.restoreThreadFolder",
+  )(function* (input) {
+    yield* commit({ type: "project.thread-folder.restore", ...input });
+    return yield* readCommitted(input.projectId);
+  });
 
   const bootstrap: ProjectService["Service"]["bootstrap"] = Effect.fn("ProjectService.bootstrap")(
     function* (input) {
@@ -588,6 +670,10 @@ export const make = Effect.gen(function* () {
     bootstrap,
     update,
     delete: deleteProject,
+    createThreadFolder,
+    updateThreadFolder,
+    deleteThreadFolder,
+    restoreThreadFolder,
     getById,
     getByWorkspaceRoot,
     snapshot,

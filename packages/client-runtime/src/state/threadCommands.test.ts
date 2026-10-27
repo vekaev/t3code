@@ -8,6 +8,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
+  ThreadFolderId,
   ThreadId,
   type OrchestrationV2Command,
   type OrchestrationV2ShellSnapshot,
@@ -264,6 +265,7 @@ describe("remote thread lifecycle commands", () => {
     ["setAutoSettle", { enabled: false }, { autoSettleDisabledAt: expect.any(Object) }],
     ["reorderPin", { orderKey: "b" }, { pinOrderKey: "b" }],
     ["reorderActive", { orderKey: "b" }, { activeOrderKey: "b" }],
+    ["setFolder", {}, { threadFolderId: "revenue" }],
   ] as const;
 
   it.effect.each(actions)(
@@ -299,6 +301,7 @@ describe("remote thread lifecycle commands", () => {
             enabled: false,
             orderKey: "a",
             snoozedUntil: "2099-01-01T00:00:00.000Z",
+            threadFolderId: ThreadFolderId.make("revenue"),
             ...input,
           },
         });

@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { EventId, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
+import { EventId, ProjectId, ProviderInstanceId, ThreadFolderId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -49,6 +49,73 @@ it.layer(ProjectStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemor
           Option.getOrNull(yield* projects.get(projectId))?.defaultModelSelection,
           modelSelection,
         );
+      }),
+    );
+
+    it.effect("keeps thread folders through a project update and reads a NULL column as none", () =>
+      Effect.gen(function* () {
+        const projects = yield* ProjectStore.ProjectStoreV2;
+        const sql = yield* SqlClient.SqlClient;
+        const projectId = ProjectId.make("project-thread-folders");
+        const event = {
+          sequence: 1,
+          eventId: EventId.make("event-thread-folders-created"),
+          aggregateKind: "project" as const,
+          aggregateId: projectId,
+          occurredAt: "2026-03-24T00:00:00.000Z",
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+        };
+        yield* projects.apply({
+          ...event,
+          type: "project.created",
+          payload: {
+            projectId,
+            title: "Folders",
+            workspaceRoot: "/tmp/project-thread-folders",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: "2026-03-24T00:00:00.000Z",
+            updatedAt: "2026-03-24T00:00:00.000Z",
+          },
+        });
+        assert.deepStrictEqual(Option.getOrThrow(yield* projects.get(projectId)).threadFolders, []);
+        const threadFolders = [
+          {
+            id: ThreadFolderId.make("folder-revenue"),
+            parentFolderId: null,
+            name: "Increase revenue",
+            icon: { kind: "emoji" as const, emoji: "💰" },
+            createdAt: "2026-03-25T00:00:00.000Z",
+            deletedAt: null,
+          },
+        ];
+        yield* projects.apply({
+          ...event,
+          sequence: 2,
+          eventId: EventId.make("event-thread-folders-updated"),
+          type: "project.meta-updated",
+          payload: { projectId, threadFolders, updatedAt: "2026-03-24T00:00:00.000Z" },
+        });
+        yield* projects.apply({
+          ...event,
+          sequence: 3,
+          eventId: EventId.make("event-thread-folders-renamed"),
+          type: "project.meta-updated",
+          payload: { projectId, title: "Renamed", updatedAt: "2026-03-26T00:00:00.000Z" },
+        });
+        const updated = Option.getOrThrow(yield* projects.get(projectId));
+        assert.deepStrictEqual(updated.threadFolders, threadFolders);
+        assert.deepStrictEqual(
+          Option.getOrThrow(yield* projects.getShell(projectId)).threadFolders,
+          threadFolders,
+        );
+
+        yield* sql`UPDATE projection_projects SET thread_folders_json = NULL`;
+        assert.deepStrictEqual(Option.getOrThrow(yield* projects.get(projectId)).threadFolders, []);
+        assert.notProperty(Option.getOrThrow(yield* projects.getShell(projectId)), "threadFolders");
       }),
     );
   },

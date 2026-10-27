@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { type CommandId, ProjectId } from "./baseSchemas.ts";
+import { type CommandId, ProjectId, ThreadFolderId } from "./baseSchemas.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   ClientSettingsSchema,
@@ -427,6 +427,27 @@ describe("requiredScopesForProjectMutation", () => {
         scripts: [],
       }),
     ).toEqual(["orchestration:operate", "settings:write"]);
+  });
+
+  it("asks only for operate access to arrange thread folders", () => {
+    const projectId = "project-1" as ProjectId;
+    const commandId = "command-1" as CommandId;
+    const folderId = ThreadFolderId.make("folder-1");
+    for (const mutation of [
+      {
+        type: "project.thread-folder.create",
+        commandId,
+        projectId,
+        folderId,
+        parentFolderId: null,
+        name: "Revenue",
+      },
+      { type: "project.thread-folder.update", commandId, projectId, folderId, name: "Growth" },
+      { type: "project.thread-folder.delete", commandId, projectId, folderId },
+      { type: "project.thread-folder.restore", commandId, projectId, folderId },
+    ] as const) {
+      expect(requiredScopesForProjectMutation(mutation)).toEqual(["orchestration:operate"]);
+    }
   });
 });
 

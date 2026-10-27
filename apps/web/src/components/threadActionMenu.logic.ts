@@ -1,4 +1,5 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import { type ContextMenuItem, ThreadFolderId } from "@t3tools/contracts";
+import type { ThreadFolderNode } from "@t3tools/client-runtime/state/thread-folders";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
@@ -17,6 +18,11 @@ export type ThreadActionMenuId =
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
+  | "move-to-folder"
+  | `move-to-folder:${string}`
+  | `folder-submenu:${string}`
+  | "remove-from-folder"
+  | "new-folder"
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -67,6 +73,108 @@ export function buildDraftActionMenuItems(options: {
   ];
 }
 
+type ThreadFolderMenuId =
+  | "new-subfolder"
+  | "rename-folder"
+  | "change-folder-icon"
+  | "remove-folder-icon"
+  | "delete-folder";
+
+export function buildThreadFolderMenuItems(options: {
+  readonly canOperate: boolean;
+  readonly canCreateSubfolder: boolean;
+  readonly hasIcon: boolean;
+}): ReadonlyArray<ContextMenuItem<ThreadFolderMenuId>> {
+  const items: ReadonlyArray<ContextMenuItem<ThreadFolderMenuId>> = [
+    {
+      id: "new-subfolder",
+      label: "New subfolder",
+      icon: "folder-plus",
+      disabled: !options.canCreateSubfolder,
+    },
+    { id: "rename-folder", label: "Rename folder", icon: "pencil" },
+    { id: "change-folder-icon", label: "Change icon…", icon: "smile-plus" },
+    ...(options.hasIcon ? [{ id: "remove-folder-icon" as const, label: "Remove icon" }] : []),
+    {
+      id: "delete-folder",
+      label: "Delete folder",
+      icon: "trash",
+      destructive: true,
+      separatorBefore: true,
+    },
+  ];
+  return options.canOperate ? items : items.map((item) => ({ ...item, disabled: true }));
+}
+
+export interface ThreadFolderMenuState {
+  /** The project's live folders, from `threadFolderTree`. */
+  readonly tree: ReadonlyArray<ThreadFolderNode>;
+  /** Checked and disabled: every thread already shows in it. */
+  readonly currentFolderId: ThreadFolderId | null;
+  /** Some thread shows in a folder. */
+  readonly inFolder: boolean;
+  readonly canCreate: boolean;
+}
+
+const MOVE_TO_FOLDER_PREFIX = "move-to-folder:";
+
+/** The folder a "Move to folder" choice files into; null is the project root. */
+export function resolveMoveToFolderChoice(action: string): ThreadFolderId | null | undefined {
+  if (action === "remove-from-folder") return null;
+  return action.startsWith(MOVE_TO_FOLDER_PREFIX)
+    ? ThreadFolderId.make(action.slice(MOVE_TO_FOLDER_PREFIX.length))
+    : undefined;
+}
+
+// Electron cannot click a menu item that opens a submenu, so a folder with subfolders
+// lists itself first as "Move here".
+function moveToFolderItem(
+  node: ThreadFolderNode,
+  currentFolderId: ThreadFolderId | null,
+): ContextMenuItem<ThreadActionMenuId> {
+  const current = node.folder.id === currentFolderId;
+  const target = {
+    id: `${MOVE_TO_FOLDER_PREFIX}${node.folder.id}` as const,
+    label: node.children.length === 0 ? node.folder.name : "Move here",
+    ...(current ? { checked: true, disabled: true } : {}),
+  };
+  if (node.children.length === 0) return target;
+  return {
+    id: `folder-submenu:${node.folder.id}`,
+    label: node.folder.name,
+    children: [
+      target,
+      ...node.children.map((child, index) => ({
+        ...moveToFolderItem(child, currentFolderId),
+        ...(index === 0 ? { separatorBefore: true } : {}),
+      })),
+    ],
+  };
+}
+
+export function buildMoveToFolderMenuItem(
+  state: ThreadFolderMenuState,
+  count?: number,
+): ContextMenuItem<ThreadActionMenuId> {
+  const actions: ContextMenuItem<ThreadActionMenuId>[] = [
+    ...(state.inFolder
+      ? [{ id: "remove-from-folder" as const, label: "Remove from folder", icon: "folder-output" }]
+      : []),
+    { id: "new-folder", label: "New folder…", icon: "folder-plus", disabled: !state.canCreate },
+  ];
+  return {
+    id: "move-to-folder",
+    label: count === undefined ? "Move to folder" : `Move to folder (${count})`,
+    icon: "folder-input",
+    children: [
+      ...state.tree.map((node) => moveToFolderItem(node, state.currentFolderId)),
+      ...actions.map((item, index) =>
+        index === 0 && state.tree.length > 0 ? { ...item, separatorBefore: true } : item,
+      ),
+    ],
+  };
+}
+
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
   readonly canFind?: boolean;
@@ -95,6 +203,16 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  /** Absent when the environment has no folders. */
+  readonly folders?: ThreadFolderMenuState | null;
+}
+
+function disableMenuItem<T extends string>(item: ContextMenuItem<T>): ContextMenuItem<T> {
+  return {
+    ...item,
+    disabled: true,
+    ...(item.children ? { children: item.children.map(disableMenuItem) } : {}),
+  };
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -166,6 +284,7 @@ export function buildThreadActionMenuItems(
               },
         ]
       : []),
+    ...(state.folders ? [buildMoveToFolderMenuItem(state.folders)] : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
     ...(state.supports.titleRegeneration
       ? [
@@ -254,15 +373,5 @@ export function buildThreadActionMenuItems(
   ];
   return state.canOperate
     ? items
-    : items.map((item) =>
-        threadActionRequiresOperate(item.id)
-          ? {
-              ...item,
-              disabled: true,
-              ...(item.children
-                ? { children: item.children.map((child) => ({ ...child, disabled: true })) }
-                : {}),
-            }
-          : item,
-      );
+    : items.map((item) => (threadActionRequiresOperate(item.id) ? disableMenuItem(item) : item));
 }

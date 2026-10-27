@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
   granted: new Set<string>(),
   effects: [] as string[],
   completed: deferred<void>(),
+  foldersSupported: false,
+  boringSidebar: false,
+  archivedAt: null as string | null,
   show: vi.fn<
     (
       items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>>,
@@ -49,6 +52,18 @@ vi.mock("../state/session", () => ({
 vi.mock("../state/entities", () => ({
   readEnvironmentServerConfigLoaded: () => true,
   readEnvironmentSupportsAutoSettleOptOut: () => true,
+  readEnvironmentSupportsThreadFolders: () => state.foldersSupported,
+  readProject: () => ({
+    threadFolders: [
+      {
+        id: "plans",
+        parentFolderId: null,
+        name: "Plans",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        deletedAt: null,
+      },
+    ],
+  }),
   readThreadShell: () => ({
     id: "thread",
     environmentId: "secondary",
@@ -58,6 +73,8 @@ vi.mock("../state/entities", () => ({
     worktreePath: null,
     runtime: null,
     latestRun: null,
+    threadFolderId: "plans",
+    archivedAt: state.archivedAt,
   }),
   useProjects: () => [{ id: "project", environmentId: "secondary" }],
 }));
@@ -117,11 +134,20 @@ vi.mock("./useSettings", () => ({
       confirmThreadArchive: true,
       timestampFormat: "12-hour",
     }),
+  useBoringSidebarEnabled: () => state.boringSidebar,
+}));
+vi.mock("./useThreadFolderActions", () => ({
+  useThreadFolderActions: () => ({
+    createThreadFolder: async () => {
+      state.effects.push("create-folder");
+      return "made";
+    },
+  }),
 }));
 vi.mock("./useThreadActions", () => ({
   canTurnThreadIntoProject: () => false,
-  useThreadActions: () =>
-    Object.fromEntries(
+  useThreadActions: () => ({
+    ...Object.fromEntries(
       [
         "markThreadUnread",
         "settleThread",
@@ -140,6 +166,15 @@ vi.mock("./useThreadActions", () => ({
         },
       ]),
     ),
+    moveThreadToFolder: async (
+      _target: unknown,
+      folderId: string | null,
+      options?: { readonly deleteFolderOnUndo?: boolean },
+    ) => {
+      recordEffect(`move:${folderId}${options?.deleteFolderOnUndo ? ":undo-deletes" : ""}`);
+      return AsyncResult.success(undefined);
+    },
+  }),
 }));
 
 import { useThreadActionMenu } from "./useThreadActionMenu";
@@ -162,8 +197,13 @@ beforeEach(() => {
   state.granted = new Set(["primary"]);
   state.effects = [];
   state.completed = deferred<void>();
+  state.foldersSupported = false;
+  state.boringSidebar = false;
+  state.archivedAt = null;
   state.show.mockReset().mockResolvedValue(null);
 });
+
+const shownMenuIds = () => state.show.mock.calls[0]?.[0].map((item) => item.id) ?? [];
 
 describe("thread menu permissions", () => {
   it.each(["rename", "regenerate-title", "delete", "pin", "settle", "archive"] as const)(
@@ -192,5 +232,37 @@ describe("thread menu permissions", () => {
     expect(items[0]?.disabled).not.toBe(true);
     expect(state.effects).toEqual(["find"]);
     expect(onFind).toHaveBeenCalledExactlyOnceWith(target);
+  });
+});
+
+describe("thread menu folders", () => {
+  it.each([
+    ["move-to-folder:plans", ["move:plans"]],
+    ["remove-from-folder", ["move:null"]],
+    ["new-folder", ["create-folder", "move:made:undo-deletes"]],
+  ] as const)("%s files the thread", async (action, effects) => {
+    state.granted.add("secondary");
+    state.foldersSupported = true;
+    state.show.mockResolvedValue(action);
+    createMenu().openMenu(position);
+    await state.completed.promise;
+    expect(shownMenuIds()).toContain("move-to-folder");
+    expect(state.effects).toEqual(effects);
+  });
+
+  it.each([
+    ["an archived thread", () => (state.archivedAt = "2026-01-02T00:00:00.000Z")],
+    ["the boring sidebar, which shows no folder rows", () => (state.boringSidebar = true)],
+  ])("leaves Move to folder out for %s", async (_, arrange) => {
+    state.granted.add("secondary");
+    state.foldersSupported = true;
+    arrange();
+    state.show.mockImplementation(async () => {
+      state.completed.resolve();
+      return null;
+    });
+    createMenu().openMenu(position);
+    await state.completed.promise;
+    expect(shownMenuIds()).not.toContain("move-to-folder");
   });
 });

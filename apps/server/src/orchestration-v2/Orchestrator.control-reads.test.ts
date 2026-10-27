@@ -15,6 +15,7 @@ import {
   RunAttemptId,
   RunId,
   RuntimeRequestId,
+  ThreadFolderId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -37,6 +38,7 @@ import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -54,6 +56,7 @@ const layerDatabase = SqlitePersistence.layerMemory;
 const layerTest = Layer.mergeAll(
   layerDatabase,
   ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+  ProjectStore.layer.pipe(Layer.provide(layerDatabase)),
   EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
   ProviderReplayHarness.layerWithRegistry(
     { name: "control-reads" },
@@ -1520,5 +1523,182 @@ it.effect("dispatch records the command outcome and its duration", () =>
 
     assert.strictEqual((yield* successes).count - successesBefore, 1);
     assert.strictEqual((yield* durations).count - durationsBefore, 1);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+const liveFolderId = ThreadFolderId.make("folder:live");
+const deletedFolderId = ThreadFolderId.make("folder:deleted");
+
+const seedFolderProject = Effect.fn("ControlReadsTest.seedFolderProject")(function* (
+  projectId: ProjectId,
+) {
+  const projects = yield* ProjectStore.ProjectStoreV2;
+  const at = "2026-01-01T00:00:00.000Z";
+  const envelope = {
+    aggregateKind: "project" as const,
+    aggregateId: projectId,
+    occurredAt: at,
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+  };
+  yield* projects.apply({
+    ...envelope,
+    sequence: 1,
+    eventId: EventId.make(`${projectId}:created`),
+    type: "project.created",
+    payload: {
+      projectId,
+      title: "Folders",
+      workspaceRoot: `/work/${projectId}`,
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: at,
+      updatedAt: at,
+    },
+  });
+  yield* projects.apply({
+    ...envelope,
+    sequence: 2,
+    eventId: EventId.make(`${projectId}:folders`),
+    type: "project.meta-updated",
+    payload: {
+      projectId,
+      threadFolders: [
+        { id: liveFolderId, parentFolderId: null, name: "Live", createdAt: at, deletedAt: null },
+        { id: deletedFolderId, parentFolderId: null, name: "Gone", createdAt: at, deletedAt: at },
+      ],
+      updatedAt: at,
+    },
+  });
+});
+
+const createFolderThread = Effect.fn("ControlReadsTest.createFolderThread")(function* (
+  threadId: ThreadId,
+  projectId: ProjectId,
+) {
+  const orchestrator = yield* Orchestrator.OrchestratorV2;
+  yield* orchestrator.dispatch({
+    type: "thread.create",
+    commandId: CommandId.make(`create:${threadId}`),
+    threadId,
+    projectId,
+    title: "Filed",
+    modelSelection,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    createdBy: "user",
+    creationSource: "web",
+  });
+});
+
+it.effect("files a thread into a folder and back out without bumping its activity", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const projectId = ProjectId.make("project:folders");
+    const threadId = ThreadId.make("thread:folders");
+    yield* seedFolderProject(projectId);
+    yield* createFolderThread(threadId, projectId);
+    const created = yield* projections.getThreadShell(threadId);
+    yield* TestClock.adjust("1 minute");
+    const setFolder = (name: string, threadFolderId: ThreadFolderId | null) =>
+      orchestrator.dispatch({
+        type: "thread.folder.set",
+        commandId: CommandId.make(`folder:${name}`),
+        threadId,
+        threadFolderId,
+      });
+
+    yield* setFolder("file", liveFolderId);
+    const filed = yield* projections.getThreadShell(threadId);
+    assert.equal(filed?.threadFolderId, liveFolderId);
+    assert.deepEqual(filed?.updatedAt, created?.updatedAt);
+    assert.equal((yield* projections.getThread(threadId)).threadFolderId, liveFolderId);
+    const refused = yield* setFolder("missing", ThreadFolderId.make("folder:missing")).pipe(
+      Effect.flip,
+    );
+    assert.equal(refused._tag, "OrchestratorDispatchError");
+    assert.equal((yield* projections.getThreadShell(threadId))?.threadFolderId, liveFolderId);
+    // Undo returns a thread to a folder deleted since, so restoring that folder brings it back.
+    yield* setFolder("deleted", deletedFolderId);
+    assert.equal((yield* projections.getThreadShell(threadId))?.threadFolderId, deletedFolderId);
+
+    yield* setFolder("unfile", null);
+    const unfiled = yield* projections.getThreadShell(threadId);
+    assert.notProperty(unfiled, "threadFolderId");
+    assert.deepEqual(unfiled?.updatedAt, created?.updatedAt);
+
+    yield* orchestrator.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("folder:archive"),
+      threadId,
+    });
+    assert.equal(
+      (yield* setFolder("archived", liveFolderId).pipe(Effect.flip))._tag,
+      "OrchestratorDispatchError",
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("a fork starts in its source's folder", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const eventSink = yield* EventSink.EventSinkV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const projectId = ProjectId.make("project:fork-folder");
+    const sourceThreadId = ThreadId.make("thread:fork-folder-source");
+    const runId = RunId.make("run:fork-folder-source");
+    const now = yield* DateTime.now;
+    yield* seedFolderProject(projectId);
+    yield* createFolderThread(sourceThreadId, projectId);
+    yield* orchestrator.dispatch({
+      type: "thread.folder.set",
+      commandId: CommandId.make("fork-folder:file-source"),
+      threadId: sourceThreadId,
+      threadFolderId: liveFolderId,
+    });
+    yield* eventSink.write({
+      events: [
+        {
+          id: EventId.make("fork-folder:source-run"),
+          type: "run.created",
+          threadId: sourceThreadId,
+          runId,
+          occurredAt: now,
+          payload: {
+            id: runId,
+            threadId: sourceThreadId,
+            ordinal: 1,
+            providerInstanceId: instanceId,
+            modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make("fork-folder:source-message"),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "completed",
+            requestedAt: now,
+            startedAt: now,
+            completedAt: now,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        },
+      ],
+    });
+    const forkThreadId = ThreadId.make("thread:fork-folder-fork");
+    yield* orchestrator.dispatch({
+      type: "thread.fork",
+      commandId: CommandId.make("fork-folder:fork"),
+      sourceThreadId,
+      targetThreadId: forkThreadId,
+      sourcePoint: { type: "run", runId },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    assert.equal((yield* projections.getThreadShell(forkThreadId))?.threadFolderId, liveFolderId);
   }).pipe(Effect.provide(layerTest)),
 );

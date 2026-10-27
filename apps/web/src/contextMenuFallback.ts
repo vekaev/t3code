@@ -44,6 +44,26 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
       },
     },
   ],
+  "folder-input": [
+    {
+      tag: "path",
+      attrs: {
+        d: "M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1",
+      },
+    },
+    { tag: "path", attrs: { d: "M2 13h10" } },
+    { tag: "path", attrs: { d: "m9 16 3-3-3-3" } },
+  ],
+  "folder-output": [
+    {
+      tag: "path",
+      attrs: {
+        d: "M2 7.5V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-1.5",
+      },
+    },
+    { tag: "path", attrs: { d: "M2 13h10" } },
+    { tag: "path", attrs: { d: "m5 10-3 3 3 3" } },
+  ],
   "git-branch": [
     { tag: "line", attrs: { x1: "6", x2: "6", y1: "3", y2: "15" } },
     { tag: "circle", attrs: { cx: "18", cy: "6", r: "3" } },
@@ -117,6 +137,14 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
       },
     },
     { tag: "circle", attrs: { cx: "12", cy: "12", r: "3" } },
+  ],
+  "smile-plus": [
+    { tag: "path", attrs: { d: "M22 11v1a10 10 0 1 1-9-10" } },
+    { tag: "path", attrs: { d: "M8 14s1.5 2 4 2 4-2 4-2" } },
+    { tag: "line", attrs: { x1: "9", x2: "9.01", y1: "9", y2: "9" } },
+    { tag: "line", attrs: { x1: "15", x2: "15.01", y1: "9", y2: "9" } },
+    { tag: "path", attrs: { d: "M16 5h6" } },
+    { tag: "path", attrs: { d: "M19 2v6" } },
   ],
   "user-plus": [
     { tag: "path", attrs: { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" } },

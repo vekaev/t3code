@@ -1,4 +1,10 @@
-import { EnvironmentId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderInstanceId,
+  RunId,
+  ThreadFolderId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -109,6 +115,7 @@ describe("createInboxReturnTracker", () => {
     { settledOverride: "settled" as const },
     { snoozedUntil: "2026-06-02T00:00:00Z" },
     { activeOrderKey: "manual-order" },
+    { threadFolderId: ThreadFolderId.make("folder-1") },
   ])("ends a grace immediately for attention or manual placement: %j", (change) => {
     const tracker = createInboxReturnTracker();
     tracker.observe([thread("a", true)]);

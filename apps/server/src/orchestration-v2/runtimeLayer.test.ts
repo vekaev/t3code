@@ -30,6 +30,7 @@ import {
   ProviderTurnId,
   RunId,
   ScheduledTaskId,
+  ThreadFolderId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -6167,11 +6168,27 @@ it.layer(layerSharedApplicationDataPlaneTest)("snooze projection", (it) => {
         `Thread ${busyThreadId} still has work in progress. Finish or stop it first.`,
       );
 
+      const scratchFolderId = ThreadFolderId.make("runtime-layer-adopt-scratch-folder");
+      yield* projects.createThreadFolder({
+        commandId: CommandId.make("runtime-layer-adopt-scratch-folder-create"),
+        projectId: scratchProjectId,
+        folderId: scratchFolderId,
+        parentFolderId: null,
+        name: "Scratch folder",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.folder.set",
+        commandId: CommandId.make("runtime-layer-adopt-idle-folder"),
+        threadId: idleThreadId,
+        threadFolderId: scratchFolderId,
+      });
+
       yield* adopt(idleThreadId, folderProjectId, "folder");
       const shell = yield* orchestrator.getShellSnapshot();
       const moved = shell.threads.find((thread) => thread.id === idleThreadId);
       assert.equal(moved?.projectId, folderProjectId);
       assert.isNull(moved?.worktreePath);
+      assert.isUndefined(moved?.threadFolderId);
       const stayed = shell.threads.find((thread) => thread.id === busyThreadId);
       assert.equal(stayed?.projectId, scratchProjectId);
     }),

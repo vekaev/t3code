@@ -10,6 +10,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   ProjectId,
+  ThreadFolderId,
   ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
@@ -149,6 +150,87 @@ export const ReceivedProjectIcon = ForwardCompatibleUnion(projectIconMembers, "k
   ),
 );
 
+export const THREAD_FOLDER_MAX_DEPTH = 6;
+export const THREAD_FOLDER_MAX_LIVE = 200;
+export const THREAD_FOLDER_MAX_TOTAL = 500;
+export const THREAD_FOLDER_NAME_MAX_LENGTH = 64;
+
+// Limits apply where folders are changed, so a later build may relax them.
+export const ThreadFolderName = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(THREAD_FOLDER_NAME_MAX_LENGTH),
+);
+
+// A deleted folder stays as a tombstone so its threads and subfolders show one level up.
+const threadFolderFields = {
+  id: ThreadFolderId,
+  parentFolderId: Schema.NullOr(ThreadFolderId),
+  name: TrimmedNonEmptyString,
+  /** The thread whose forks this folder collects. */
+  forkRootThreadId: Schema.optional(Schema.NullOr(ThreadId)),
+  createdAt: IsoDateTime,
+  deletedAt: Schema.NullOr(IsoDateTime),
+};
+
+export const StoredThreadFolder = Schema.Struct({
+  ...threadFolderFields,
+  icon: Schema.optional(Schema.NullOr(StoredProjectIcon)),
+});
+export type StoredThreadFolder = typeof StoredThreadFolder.Type;
+
+export const ThreadFolder = Schema.Struct({
+  ...threadFolderFields,
+  icon: Schema.optional(Schema.NullOr(ReceivedProjectIcon)),
+});
+export type ThreadFolder = typeof ThreadFolder.Type;
+
+type ThreadFolderLink = Pick<ThreadFolder, "id" | "parentFolderId" | "deletedAt">;
+
+/** `id` and the folders above it, stopping at an unknown id or a cycle. */
+function* threadFolderChain<Folder extends ThreadFolderLink>(
+  folders: ReadonlyArray<Folder>,
+  id: ThreadFolderId | null,
+): Generator<Folder> {
+  const seen = new Set<ThreadFolderId>();
+  for (let next = id; next !== null && !seen.has(next);) {
+    const folder = folders.find((candidate) => candidate.id === next);
+    if (folder === undefined) return;
+    seen.add(next);
+    yield folder;
+    next = folder.parentFolderId;
+  }
+}
+
+/** The live folder a thread or subfolder in `id` shows under; null is the project root. */
+export function resolveLiveThreadFolderId(
+  folders: ReadonlyArray<ThreadFolderLink>,
+  id: ThreadFolderId | null | undefined,
+): ThreadFolderId | null {
+  for (const folder of threadFolderChain(folders, id ?? null)) {
+    if (folder.deletedAt === null) return folder.id;
+  }
+  return null;
+}
+
+/** Every folder above `id`, deleted ones included, nearest first. */
+export function threadFolderAncestorIds(
+  folders: ReadonlyArray<ThreadFolderLink>,
+  id: ThreadFolderId,
+): ReadonlyArray<ThreadFolderId> {
+  return Array.from(threadFolderChain(folders, id), (folder) => folder.id).slice(1);
+}
+
+/** Live folders from the root down to `id`, inclusive; the root itself is 0. */
+export function threadFolderDepth(
+  folders: ReadonlyArray<ThreadFolderLink>,
+  id: ThreadFolderId | null,
+): number {
+  let depth = 0;
+  for (const folder of threadFolderChain(folders, id)) {
+    if (folder.deletedAt === null) depth += 1;
+  }
+  return depth;
+}
+
 export const Project = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
@@ -161,6 +243,7 @@ export const Project = Schema.Struct({
   // Opt-in because background sync performs network I/O and may move the checkout.
   autoPull: Schema.optional(Schema.Boolean),
   scripts: Schema.Array(ProjectScript),
+  threadFolders: Schema.optional(Schema.Array(ThreadFolder)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -194,6 +277,22 @@ export const ProjectUpdatePayload = Schema.Struct({
 });
 export type ProjectUpdatePayload = typeof ProjectUpdatePayload.Type;
 
+export const ProjectThreadFolderCreatePayload = Schema.Struct({
+  folderId: ThreadFolderId,
+  parentFolderId: Schema.NullOr(ThreadFolderId),
+  name: ThreadFolderName,
+  icon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
+});
+export type ProjectThreadFolderCreatePayload = typeof ProjectThreadFolderCreatePayload.Type;
+
+export const ProjectThreadFolderUpdatePayload = Schema.Struct({
+  folderId: ThreadFolderId,
+  name: Schema.optional(ThreadFolderName),
+  icon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
+  parentFolderId: Schema.optional(Schema.NullOr(ThreadFolderId)),
+});
+export type ProjectThreadFolderUpdatePayload = typeof ProjectThreadFolderUpdatePayload.Type;
+
 export const ProjectMutation = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("project.create"),
@@ -212,6 +311,30 @@ export const ProjectMutation = Schema.Union([
     commandId: CommandId,
     projectId: ProjectId,
     force: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("project.thread-folder.create"),
+    commandId: CommandId,
+    projectId: ProjectId,
+    ...ProjectThreadFolderCreatePayload.fields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("project.thread-folder.update"),
+    commandId: CommandId,
+    projectId: ProjectId,
+    ...ProjectThreadFolderUpdatePayload.fields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("project.thread-folder.delete"),
+    commandId: CommandId,
+    projectId: ProjectId,
+    folderId: ThreadFolderId,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("project.thread-folder.restore"),
+    commandId: CommandId,
+    projectId: ProjectId,
+    folderId: ThreadFolderId,
   }),
 ]);
 export type ProjectMutation = typeof ProjectMutation.Type;
