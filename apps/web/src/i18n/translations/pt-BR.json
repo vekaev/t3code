@@ -1875,6 +1875,7 @@
   "a0cc19e60dd99851": "Abrir uso",
   "46694969044eee98": "Focar a próxima área do workspace",
   "0a1011328ba42eef": "Focar a área anterior do workspace",
+  "2da097fe7f17f70e": "Open scheduled tasks",
   "90896a7348c4e7ce": "Abrir configurações",
   "1d17dc60c59e0524": "Desafixar projeto",
   "5cfaaa20c460c328": "Fixar projeto",
@@ -8822,6 +8823,7 @@
   "4e0943e8c7a465d1": "Seletor de arquivos: alternar",
   "df5fdcdf26a6b52a": "Pesquisa no projeto: alternar",
   "0ca6fd2b8fcab2c3": "Uso: Mostrar ou ocultar",
+  "7275423ce0633397": "Scheduled Tasks: Open",
   "a513d51b71b95674": "Tema: selecionar",
   "1ffd8427452372e1": "Aparência: alternar ciclicamente",
   "3a3bb4a7551a87cc": "Editor de temas: alternar",
@@ -10476,6 +10478,94 @@
     }
   ],
   "a8c2b705bbb43a80": "Nenhum resultado encontrado.",
+  "a437a9c8cae75437": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "on" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 7,
+      "c": [
+        { "t": "span", "i": 8, "c": "in" },
+        { "i": 9, "k": "_gt_value_9", "v": "v" }
+      ]
+    }
+  ],
+  "1a9a9821781da929": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "on" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    }
+  ],
+  "7d0edc7f2b04c7fe": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "across" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 7,
+      "c": [
+        { "t": "span", "i": 8, "c": "in" },
+        { "i": 9, "k": "_gt_value_9", "v": "v" }
+      ]
+    }
+  ],
+  "b7de78b08d2b4002": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "across" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    }
+  ],
   "425f7ce2f24cb248": "Seções de configurações",
   "ee3e8bd8b7918aec": "Pesquisar",
   "858561b97fdd72f2": "Buscar configurações",
@@ -11818,6 +11908,8 @@
   "4beeab8d1814b251": "Diffs e pull requests",
   "3b958faa12d54484": "Atalhos de teclado",
   "2ab325baee3ec9a3": "Tarefas agendadas",
+  "8a7705186c3d58d8": "Scheduled tasks breadcrumb",
+  "df1fb90eb9a77fbf": "Scheduled tasks",
   "0a59e086514a62a9": "Controle de versão e issues",
   "1de0df2b8a4fb96e": "Compartilhamento e acesso",
   "4c70e3e7b3e6c493": "Segredos",

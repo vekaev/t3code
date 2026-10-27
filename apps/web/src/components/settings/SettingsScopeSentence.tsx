@@ -86,6 +86,16 @@ export function SettingsScopeSentence() {
   const environment = <EnvironmentScopeMenu {...props} />;
   const checkout = <CheckoutScopeMenu {...props} />;
   const onEnvironment = scope.search.machine || scope.scope.kind === "checkout";
+  if (pathname === "/scheduled-tasks") {
+    return (
+      <ScheduledTasksScopeSentence
+        project={project}
+        environment={environment}
+        checkout={hasCheckouts ? checkout : null}
+        onEnvironment={Boolean(onEnvironment)}
+      />
+    );
+  }
   return (
     <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
       {onEnvironment && hasCheckouts ? (
@@ -443,5 +453,76 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
         };
       })}
     />
+  );
+}
+
+/** The Scheduled tasks page filters its list, so its sentence says what it shows. */
+function ScheduledTasksScopeSentence({
+  project,
+  environment,
+  checkout,
+  onEnvironment,
+}: {
+  readonly project: ReactNode;
+  readonly environment: ReactNode;
+  readonly checkout: ReactNode | null;
+  readonly onEnvironment: boolean;
+}) {
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
+      {onEnvironment && checkout !== null ? (
+        <T context="settings scope sentence; each variable is a menu">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">Showing tasks for</span>
+            <Var>{project}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">on</span>
+            <Var>{environment}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">in</span>
+            <Var>{checkout}</Var>
+          </span>
+        </T>
+      ) : onEnvironment ? (
+        <T context="settings scope sentence; each variable is a menu">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">Showing tasks for</span>
+            <Var>{project}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">on</span>
+            <Var>{environment}</Var>
+          </span>
+        </T>
+      ) : checkout !== null ? (
+        <T context="settings scope sentence; each variable is a menu">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">Showing tasks for</span>
+            <Var>{project}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">across</span>
+            <Var>{environment}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">in</span>
+            <Var>{checkout}</Var>
+          </span>
+        </T>
+      ) : (
+        <T context="settings scope sentence; each variable is a menu">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">Showing tasks for</span>
+            <Var>{project}</Var>
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0">across</span>
+            <Var>{environment}</Var>
+          </span>
+        </T>
+      )}
+    </p>
   );
 }
