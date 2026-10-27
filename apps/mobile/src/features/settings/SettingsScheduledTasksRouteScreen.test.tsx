@@ -219,21 +219,38 @@ function button(label: string) {
   return element;
 }
 describe("scheduled task batched edits", () => {
-  it("submits the selected interval when saved before React commits", async () => {
-    await act(async () => {
-      button("Interval").click();
-      button("Save changes").click();
-    });
-    expect(mocks.alert).not.toHaveBeenCalled();
-    expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith({
-      environmentId: "environment",
-      input: expect.objectContaining({
-        id: "task",
-        requireExisting: true,
-        schedule: { type: "interval", everyMs: 3_600_000 },
-      }),
-    });
-  });
+  it.each([
+    { from: "a fixed time", schedule: {} },
+    {
+      from: "an invalid cron expression",
+      schedule: { mode: "cron", cronExpression: "60 * * * *" },
+    },
+  ] as const)(
+    "submits the selected interval when saved before React commits, from $from",
+    async ({ schedule }) => {
+      const editor = appAtomRegistry.get(scheduledTaskEditorSessionAtom)?.current;
+      if (!editor) throw new Error("Missing editor");
+      act(() =>
+        startScheduledTaskEditor({
+          ...editor,
+          draft: { ...editor.draft, schedule: { ...editor.draft.schedule, ...schedule } },
+        }),
+      );
+      await act(async () => {
+        button("Interval").click();
+        button("Save changes").click();
+      });
+      expect(mocks.alert).not.toHaveBeenCalled();
+      expect(mocks.upsert).toHaveBeenCalledExactlyOnceWith({
+        environmentId: "environment",
+        input: expect.objectContaining({
+          id: "task",
+          requireExisting: true,
+          schedule: { type: "interval", everyMs: 3_600_000 },
+        }),
+      });
+    },
+  );
   it("retains the interval when enabled changes before React commits", async () => {
     act(() => {
       button("Interval").click();

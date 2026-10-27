@@ -12,6 +12,7 @@ import {
   type ProjectCloneStage,
   type ProviderRuntimeModeLimit,
   type RuntimeMode,
+  scheduledTaskCronExpressionIssue,
   type WorktreeSetupStageId,
   worktreeSetupStageLabel as contractsWorktreeSetupStageLabel,
 } from "@t3tools/contracts";
@@ -35,6 +36,36 @@ export function worktreeSetupStageLabel(
 ): string {
   const english = contractsWorktreeSetupStageLabel(id);
   return resolve(WORKTREE_SETUP_STAGE_LABELS[english] ?? english);
+}
+
+const CRON_FIELD_LABELS = [
+  msg("Minute", { $context: "cron expression field" }),
+  msg("Hour", { $context: "cron expression field" }),
+  msg("Day of month", { $context: "cron expression field" }),
+  msg("Month", { $context: "cron expression field" }),
+  msg("Weekday", { $context: "cron expression field" }),
+];
+
+/** Why a cron expression can't be saved, or null. effect/Cron's own detail stays English. */
+export function scheduledTaskCronExpressionError(
+  expression: string,
+  resolve: MFunctionType = mFallback,
+): string | null {
+  const issue = scheduledTaskCronExpressionIssue(expression);
+  if (issue === null) return null;
+  switch (issue.kind) {
+    case "fieldCount":
+      return resolve(msg("Use five fields: minute hour day-of-month month weekday."));
+    case "field": {
+      const label = CRON_FIELD_LABELS[issue.field];
+      const field = label === undefined ? String(issue.field + 1) : resolve(label);
+      return resolve(msg("{field}: {detail}", { field, detail: issue.detail }));
+    }
+    case "invalid":
+      return issue.detail;
+    case "neverRuns":
+      return resolve(msg("This schedule never runs."));
+  }
 }
 
 const PROJECT_CLONE_STAGE_LABELS: Record<ProjectCloneStage, string> = {

@@ -96,6 +96,7 @@ import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from ".
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
   changeDraftProject,
+  cronDraftError,
   moveDraftToThread,
   scheduleDraftErrors,
   scheduledTaskDestinationThreads,
@@ -194,6 +195,7 @@ const EMPTY_DRAFT: DraftState = {
   runAt: "",
   savedRunAt: "",
   weekdays: new Set([1, 2, 3, 4, 5]),
+  cronExpression: "0 9 * * 1-5",
   projectId: "",
   threadId: "",
   savedThreadId: "",
@@ -1559,6 +1561,12 @@ function ScheduledTaskEditorForm({
     )
     .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
   const submissionPending = useRef(false);
+  const supportsCron =
+    environment?.serverConfig?.environment.capabilities.scheduledTaskCron === true;
+  const cronError =
+    connected && !supportsCron && draft.scheduleMode === "cron"
+      ? gt("Update {product} on this environment to use custom schedules.", { product: "T3 Code" })
+      : cronDraftError(draft, messages);
   const editingTaskMissing =
     draft.editingId !== null &&
     tasksQuery.data !== null &&
@@ -1654,6 +1662,10 @@ function ScheduledTaskEditorForm({
     const parsedFilters = parseWebhookFilterDrafts(draft.filters, m);
     if (draft.scheduleMode === "webhook" && "error" in parsedFilters) {
       reportFailure(gt("Invalid filter"), parsedFilters.error);
+      return;
+    }
+    if (cronError !== null) {
+      reportFailure(gt("Invalid schedule"), cronError);
       return;
     }
     const schedule = scheduleFromDraft(draft);
@@ -2037,6 +2049,7 @@ function ScheduledTaskEditorForm({
                     mode === "fixed" ||
                     mode === "once" ||
                     mode === "interval" ||
+                    mode === "cron" ||
                     mode === "webhook"
                   )
                     setDraft((current) => {
@@ -2073,6 +2086,11 @@ function ScheduledTaskEditorForm({
                 <Toggle value="interval">
                   <T>Every interval</T>
                 </Toggle>
+                {supportsCron || draft.scheduleMode === "cron" ? (
+                  <Toggle value="cron">
+                    <T>Custom</T>
+                  </Toggle>
+                ) : null}
                 <Toggle
                   value="webhook"
                   disabled={webhookDenial !== undefined && draft.scheduleMode !== "webhook"}
@@ -2349,6 +2367,36 @@ function ScheduledTaskEditorForm({
                   ))}
                 </ToggleGroup>
               </div>
+            ) : draft.scheduleMode === "cron" ? (
+              <Field
+                label={gt("Cron expression")}
+                hint={gt("minute hour day month weekday")}
+                htmlFor="scheduled-task-cron"
+              >
+                <Input
+                  id="scheduled-task-cron"
+                  font="mono"
+                  placeholder="0 9 * * 1-5"
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-invalid={cronError !== null || undefined}
+                  aria-describedby="scheduled-task-cron-help"
+                  value={draft.cronExpression}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, cronExpression: event.target.value }))
+                  }
+                />
+                <p
+                  id="scheduled-task-cron-help"
+                  className={
+                    cronError === null
+                      ? "text-xs text-muted-foreground"
+                      : "text-xs text-destructive"
+                  }
+                >
+                  {cronError ?? gt("Runs in this environment's time zone.")}
+                </p>
+              </Field>
             ) : (
               <div className="flex items-center gap-2">
                 <Label htmlFor="scheduled-task-interval">

@@ -1,3 +1,5 @@
+import * as Cron from "effect/Cron";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import {
@@ -71,6 +73,71 @@ const ScheduledTaskOnceSchedule = Schema.Struct({
       (value) => isIsoWithOffset(value) || "Expected an ISO date and time with an offset.",
     ),
   ),
+});
+
+const CRON_FIELD_NAMES = ["Minute", "Hour", "Day of month", "Month", "Weekday"];
+
+function maxDaysInMonth(month: number): number {
+  if (month === 2) return 29;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+/** `field` indexes minute, hour, day of month, month, weekday; `detail` is effect/Cron's text. */
+export type ScheduledTaskCronExpressionIssue =
+  | { readonly kind: "fieldCount" }
+  | { readonly kind: "field"; readonly field: number; readonly detail: string }
+  | { readonly kind: "invalid"; readonly detail: string }
+  | { readonly kind: "neverRuns" };
+
+export function scheduledTaskCronExpressionIssue(
+  expression: string,
+): ScheduledTaskCronExpressionIssue | null {
+  const fields = expression.trim().split(/\s+/);
+  // effect/Cron reads a sixth leading field as seconds, which would allow sub-minute runs.
+  if (fields.length !== 5) return { kind: "fieldCount" };
+  const parsed = Cron.parse(expression);
+  if (Result.isFailure(parsed)) {
+    for (const index of CRON_FIELD_NAMES.keys()) {
+      const alone = Cron.parse(
+        fields.map((field, other) => (other === index ? field : "*")).join(" "),
+      );
+      if (Result.isFailure(alone)) {
+        return { kind: "field", field: index, detail: alone.failure.message };
+      }
+    }
+    return { kind: "invalid", detail: parsed.failure.message };
+  }
+  const { days, months, weekdays } = parsed.success;
+  // effect/Cron keeps `and` internal: a day field starting with `*` makes both day fields apply.
+  const daysRequired =
+    weekdays.size === 0 || [fields[2], fields[4]].some((field) => field?.startsWith("*"));
+  const neverRuns =
+    daysRequired &&
+    days.size > 0 &&
+    months.size > 0 &&
+    [...months].every((month) => maxDaysInMonth(month) < Math.min(...days));
+  return neverRuns ? { kind: "neverRuns" } : null;
+}
+
+/** English for the server and schema; clients use the translatable copy in contract-labels. */
+export function scheduledTaskCronExpressionError(expression: string): string | null {
+  const issue = scheduledTaskCronExpressionIssue(expression);
+  if (issue === null) return null;
+  switch (issue.kind) {
+    case "fieldCount":
+      return "Use five fields: minute hour day-of-month month weekday.";
+    case "field":
+      return `${CRON_FIELD_NAMES[issue.field]}: ${issue.detail}`;
+    case "invalid":
+      return issue.detail;
+    case "neverRuns":
+      return "This schedule never runs.";
+  }
+}
+
+const ScheduledTaskCronSchedule = Schema.Struct({
+  type: Schema.Literal("cron"),
+  expression: TrimmedNonEmptyString,
 });
 
 const ScheduledTaskWebhookSignatureFields = {
@@ -195,6 +262,7 @@ export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskWebhookSchedule,
 ]);
 export type ScheduledTaskSchedule = typeof ScheduledTaskSchedule.Type;
@@ -210,6 +278,12 @@ export const ScheduledTaskUpsertSchedule = Schema.Union([
   }),
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
+  Schema.Struct({
+    type: Schema.Literal("cron"),
+    expression: TrimmedNonEmptyString.check(
+      Schema.makeFilter((value: string) => scheduledTaskCronExpressionError(value) ?? true),
+    ),
+  }),
   ScheduledTaskUpsertWebhookSchedule,
 ]);
 export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Type;

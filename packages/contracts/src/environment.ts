@@ -228,6 +228,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   issueLinkedThreads: Schema.optionalKey(Schema.Boolean),
   /** Keeps more than one account per standalone issue tracker; older servers keep one. */
   issueTrackerAccounts: Schema.optionalKey(Schema.Boolean),
+  /** Hide the Custom (cron) schedule when absent; older servers reject it. */
+  scheduledTaskCron: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

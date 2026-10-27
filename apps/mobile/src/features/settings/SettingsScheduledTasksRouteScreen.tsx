@@ -1,5 +1,8 @@
 import { msg, T, useGT, useLocale, useMessages, Var } from "gt-react-native";
-import { managedCapabilityDenial } from "@t3tools/client-runtime/contract-labels";
+import {
+  managedCapabilityDenial,
+  scheduledTaskCronExpressionError,
+} from "@t3tools/client-runtime/contract-labels";
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -139,6 +142,8 @@ function describeSchedule(
   }
   if (task.schedule.type === "interval")
     return formatScheduledTaskInterval(task.schedule.everyMs, resolve);
+  if (task.schedule.type === "cron")
+    return resolve(msg("Cron {expression}", { expression: task.schedule.expression }));
   const days = task.schedule.weekdays?.length
     ? repeatLabel(task.schedule.weekdays, resolve, locale)
     : resolve(msg("Every day"));
@@ -206,6 +211,8 @@ function FormField(props: {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly keyboardType?: "decimal-pad" | "number-pad";
+  readonly autoCapitalize?: "none";
+  readonly autoCorrect?: boolean;
   readonly disabled?: boolean;
   readonly placeholder?: string;
   readonly borderTop?: boolean;
@@ -224,6 +231,8 @@ function FormField(props: {
         onChangeText={props.onChange}
         textAlignVertical="center"
         keyboardType={props.keyboardType}
+        autoCapitalize={props.autoCapitalize}
+        autoCorrect={props.autoCorrect}
         placeholder={props.placeholder}
         placeholderTextColorClassName="accent-foreground-muted"
         className="min-h-8 font-sans text-base text-foreground"
@@ -793,6 +802,11 @@ function TaskForm({
   const environmentUnavailable = !availableTargets.some(
     (target) => target.environmentId === environmentId,
   );
+  const cronSupported = config?.environment.capabilities.scheduledTaskCron === true;
+  const cronError =
+    draft.schedule.mode === "cron"
+      ? scheduledTaskCronExpressionError(draft.schedule.cronExpression, m)
+      : null;
 
   const failure = (title: string, result: AtomCommandResult<unknown, unknown>) => {
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -859,6 +873,24 @@ function TaskForm({
           "Each dedupe key must contain a valid request placeholder. The coalesce window must be whole seconds from 10 to 3600, or blank.",
         ),
       );
+      return;
+    }
+    if (draft.schedule.mode === "cron" && !cronSupported) {
+      Dialog.alert(
+        gt("Custom schedules unavailable"),
+        gt("Update {product} on this environment to use custom schedules.", {
+          product: "T3 Code",
+        }),
+      );
+      return;
+    }
+    // Checks the draft just read, not the last render, so quick edits before Save count.
+    const savedCronError =
+      draft.schedule.mode === "cron"
+        ? scheduledTaskCronExpressionError(draft.schedule.cronExpression, m)
+        : null;
+    if (savedCronError !== null) {
+      Dialog.alert(gt("Invalid cron expression"), savedCronError);
       return;
     }
     if (
@@ -1167,6 +1199,14 @@ function TaskForm({
                     ]
                   : []),
                 { value: "interval", label: gt("Interval") },
+                ...(cronSupported || draft.schedule.mode === "cron"
+                  ? [
+                      {
+                        value: "cron" as const,
+                        label: gt("Custom", { $context: "custom cron schedule option" }),
+                      },
+                    ]
+                  : []),
                 ...(webhookDenial === undefined || draft.schedule.mode === "webhook"
                   ? [{ value: "webhook" as const, label: gt("On webhook") }]
                   : []),
@@ -1428,6 +1468,31 @@ function TaskForm({
                 </T>
               </Text>
             </>
+          ) : draft.schedule.mode === "cron" ? (
+            <>
+              <FormField
+                label={gt("Cron expression")}
+                value={draft.schedule.cronExpression}
+                placeholder="0 9 * * 1-5"
+                autoCapitalize="none"
+                autoCorrect={false}
+                disabled={saving}
+                borderTop
+                onChange={(cronExpression) =>
+                  setDraft((current) => ({
+                    ...current,
+                    schedule: { ...current.schedule, cronExpression },
+                  }))
+                }
+              />
+              {cronError !== null && draft.schedule.cronExpression.trim() ? (
+                <Text className="px-4 pb-3 text-sm text-danger-foreground">{cronError}</Text>
+              ) : (
+                <Text className="px-4 pb-3 text-sm text-foreground-muted">
+                  <T>minute hour day month weekday</T>
+                </Text>
+              )}
+            </>
           ) : (
             <>
               <FormField
@@ -1469,7 +1534,7 @@ function TaskForm({
             />
           </View>
         </SettingsSection>
-        {draft.schedule.mode === "fixed_time" ? (
+        {draft.schedule.mode === "fixed_time" || draft.schedule.mode === "cron" ? (
           <Text className="px-2 text-sm text-foreground-muted">
             <T>Time uses the environment's time zone, which may differ from your phone's.</T>
           </Text>
