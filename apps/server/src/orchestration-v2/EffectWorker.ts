@@ -19,6 +19,7 @@ import {
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import * as ResourceCleanupService from "./ResourceCleanupService.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
+import * as ForkFolderService from "./ForkFolderService.ts";
 import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
@@ -78,6 +79,7 @@ export const layerExecutor: Layer.Layer<
   | ProviderTurnStartService.ProviderTurnStartServiceV2
   | RuntimeRequestService.RuntimeRequestServiceV2
   | ThreadTitleRegenerationService.ThreadTitleRegenerationService
+  | ForkFolderService.ForkFolderService
   | ThreadManagementService.ThreadManagementService
   | ServerSettings.ServerSettingsService
 > = Layer.effect(
@@ -92,6 +94,7 @@ export const layerExecutor: Layer.Layer<
     const runtimeRequests = yield* RuntimeRequestService.RuntimeRequestServiceV2;
     const threadTitleRegeneration =
       yield* ThreadTitleRegenerationService.ThreadTitleRegenerationService;
+    const forkFolders = yield* ForkFolderService.ForkFolderService;
     const threads = yield* ThreadManagementService.ThreadManagementService;
     const settings = yield* ServerSettings.ServerSettingsService;
     return OrchestrationEffectExecutorV2.of({
@@ -545,6 +548,22 @@ export const layerExecutor: Layer.Layer<
                 threadId: effect.threadId,
                 commandId: effect.commandId,
                 reason: effect.request.reason,
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: effect.request.type,
+                      cause,
+                    }),
+                ),
+              );
+          case "fork-folder.place":
+            return forkFolders
+              .place({
+                sourceThreadId: effect.request.sourceThreadId,
+                threadId: effect.request.threadId,
               })
               .pipe(
                 Effect.mapError(

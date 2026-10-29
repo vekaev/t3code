@@ -787,8 +787,9 @@ export function applyToProjection(
         ...base,
         thread: event.payload,
       };
-    // Reordering and PR refreshes preserve the orchestrator's activity timestamp.
+    // Arranging and PR refreshes preserve the orchestrator's activity timestamp.
     case "thread.active-reordered":
+    case "thread.folder-set":
     case "thread.pull-request-synced":
       return {
         ...base,
@@ -1482,6 +1483,9 @@ export function threadShellFromProjection(
     ...(projection.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: projection.thread.activeOrderKey }),
+    ...(projection.thread.threadFolderId == null
+      ? {}
+      : { threadFolderId: projection.thread.threadFolderId }),
     lineage: projection.thread.lineage,
     forkedFrom: projection.thread.forkedFrom,
     activeProviderThreadId: projection.thread.activeProviderThreadId,
@@ -1764,6 +1768,9 @@ function shellFromState(input: {
     ...(input.state.thread.activeOrderKey === undefined
       ? {}
       : { activeOrderKey: input.state.thread.activeOrderKey }),
+    ...(input.state.thread.threadFolderId == null
+      ? {}
+      : { threadFolderId: input.state.thread.threadFolderId }),
     lineage: input.state.thread.lineage,
     forkedFrom: input.state.thread.forkedFrom,
     activeProviderThreadId: input.state.thread.activeProviderThreadId,
@@ -1871,6 +1878,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             case "thread.unpinned":
             case "thread.pin-reordered":
             case "thread.active-reordered":
+            case "thread.folder-set":
             case "thread.visited":
             case "thread.marked-unread":
             case "thread.metadata-updated":
@@ -2677,6 +2685,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             event.type !== "thread.unpinned" &&
             event.type !== "thread.pin-reordered" &&
             event.type !== "thread.active-reordered" &&
+            event.type !== "thread.folder-set" &&
             event.type !== "thread.visited" &&
             event.type !== "thread.marked-unread" &&
             event.type !== "thread.metadata-updated" &&

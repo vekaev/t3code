@@ -57,11 +57,20 @@ const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 export function resolveSidebarRowAccessibility(input: {
   readonly title: string;
   readonly statusLabel: string | null;
+  /** Indentation alone does not tell a screen reader which folder holds the row. */
+  readonly folderName?: string | null;
   readonly projectDisplayName: string | null;
   readonly isActive: boolean;
 }): { readonly label: string; readonly current: "page" | undefined } {
   return {
-    label: [input.title, input.statusLabel, input.projectDisplayName].filter(Boolean).join(", "),
+    label: [
+      input.title,
+      input.statusLabel,
+      input.folderName ? `in ${input.folderName}` : null,
+      input.projectDisplayName,
+    ]
+      .filter(Boolean)
+      .join(", "),
     current: input.isActive ? "page" : undefined,
   };
 }
@@ -193,11 +202,28 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      /** Above 0 inside a folder. */
+      readonly depth?: number;
+    }
+  /** A folder or project label row of the folder block. */
+  | { readonly kind: "folder"; readonly key: string }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
 
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
+  return item.kind === "thread"
+    ? item.key
+    : item.kind === "folder"
+      ? `sidebar-folder-${item.key}`
+      : sidebarMarkerId(item.marker);
+}
+
+/** Folder rows and the threads inside them, which sit above the loose Active threads. */
+export function isSidebarFolderBlockItem(item: SidebarListItem): boolean {
+  return item.kind === "folder" || (item.kind === "thread" && (item.depth ?? 0) > 0);
 }
 
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
@@ -226,11 +252,19 @@ export function resolveSidebarDropTarget(
 ): SidebarDropTarget | null {
   const activeIndex = items.findIndex((item) => sidebarListItemId(item) === activeKey);
   const overIndex = items.findIndex((item) => sidebarListItemId(item) === overId);
-  if (activeIndex === -1 || overIndex === -1 || items[activeIndex]?.kind !== "thread") return null;
+  const active = items[activeIndex];
+  if (activeIndex === -1 || overIndex === -1 || active?.kind !== "thread") return null;
   const moved = items.filter((_, index) => index !== activeIndex);
-  moved.splice(overIndex, 0, items[activeIndex]!);
-  const section = sectionAtSidebarSlot(moved, overIndex);
+  // Drags do not file threads, so a drop on the folder block lands in the first loose Active slot.
+  const blockStart = moved.findIndex(isSidebarFolderBlockItem);
+  const blockEnd = moved.findLastIndex(isSidebarFolderBlockItem) + 1;
+  const insertAt =
+    blockStart !== -1 && overIndex >= blockStart && overIndex < blockEnd ? blockEnd : overIndex;
+  moved.splice(insertAt, 0, active);
+  const section = sectionAtSidebarSlot(moved, insertAt);
   if (section === "working" || section === "snoozed") return null;
+  // A thread in a folder keeps its place there, so it only leaves Active.
+  if (section === "active" && isSidebarFolderBlockItem(active)) return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
@@ -243,8 +277,9 @@ export function resolveSidebarDropTarget(
         item.marker === "settled-header"
       )
         break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
-    else activeOrder.push(item.key);
+    } else if (item.kind === "folder") continue;
+    else if (currentSection === "pinned") pinnedOrder.push(item.key);
+    else if (!isSidebarFolderBlockItem(item)) activeOrder.push(item.key);
   }
   return { section, pinnedOrder, activeOrder };
 }

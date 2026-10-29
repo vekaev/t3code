@@ -26,15 +26,27 @@ import {
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
 } from "./runtime.ts";
-import { createProject, deleteProject, updateProject } from "../operations/commands.ts";
+import {
+  createProject,
+  createThreadFolder,
+  deleteProject,
+  deleteThreadFolder,
+  restoreThreadFolder,
+  updateProject,
+  updateThreadFolder,
+} from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createFileMetadataAtoms } from "./fileMetadata.ts";
 import { resolveWorkspaceFilePath } from "@t3tools/shared/path";
 
 export type {
   CreateProjectInput,
+  CreateThreadFolderInput,
   DeleteProjectInput,
+  DeleteThreadFolderInput,
+  RestoreThreadFolderInput,
   UpdateProjectInput,
+  UpdateThreadFolderInput,
 } from "../operations/commands.ts";
 
 export interface OptimisticProjectFile {
@@ -164,6 +176,30 @@ export function createProjectEnvironmentAtoms<R, E>(
     delete: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:project:delete",
       execute: deleteProject,
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    createThreadFolder: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:create-thread-folder",
+      execute: createThreadFolder,
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    updateThreadFolder: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:update-thread-folder",
+      execute: updateThreadFolder,
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    deleteThreadFolder: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:delete-thread-folder",
+      execute: deleteThreadFolder,
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    restoreThreadFolder: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:restore-thread-folder",
+      execute: restoreThreadFolder,
       scheduler: projectScheduler,
       concurrency: projectConcurrency,
     }),

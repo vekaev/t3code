@@ -13,6 +13,7 @@ import {
   EnvironmentAuthorizationError,
   EnvironmentId,
   type ScopedThreadRef,
+  type ThreadFolderId,
   ThreadId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
@@ -39,6 +40,7 @@ import { readLocalApi } from "../localApi";
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsThreadFolders,
   readEnvironmentThreadRefs,
   readProject,
   readThreadShell,
@@ -147,6 +149,18 @@ export class ThreadPinReorderUnsupportedError extends Schema.TaggedError<ThreadP
 ) {
   override get message(): string {
     return "This environment's server does not support reordering pinned threads yet. Update the server to reorder pins.";
+  }
+}
+
+export class ThreadFoldersUnsupportedError extends Schema.TaggedError<ThreadFoldersUnsupportedError>()(
+  "ThreadFoldersUnsupportedError",
+  {
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  },
+) {
+  override get message(): string {
+    return "Update this environment's server to use folders.";
   }
 }
 
@@ -287,6 +301,13 @@ export function useThreadActions() {
   const reorderActiveThreadMutation = useOrchestrationCommand(threadEnvironment.reorderActive, {
     reportFailure: false,
   });
+  const setThreadFolderMutation = useOrchestrationCommand(threadEnvironment.setFolder, {
+    reportFailure: false,
+  });
+  const deleteThreadFolderMutation = useOrchestrationCommand(
+    projectEnvironment.deleteThreadFolder,
+    { reportFailure: false },
+  );
   const snoozeThreadMutation = useOrchestrationCommand(threadEnvironment.snooze, {
     reportFailure: false,
   });
@@ -816,6 +837,68 @@ export function useThreadActions() {
     });
   };
 
+  const moveThreadToFolder = async (
+    target: ScopedThreadRef,
+    threadFolderId: ThreadFolderId | null,
+    options: {
+      /** The folder was made for this move, so Undo deletes it too. */
+      readonly deleteFolderOnUndo?: boolean;
+    } = {},
+  ) => {
+    if (!readEnvironmentSupportsThreadFolders(target.environmentId)) {
+      return AsyncResult.failure(
+        Cause.fail(
+          new ThreadFoldersUnsupportedError({
+            environmentId: target.environmentId,
+            threadId: target.threadId,
+          }),
+        ),
+      );
+    }
+    const thread = readThreadShell(target);
+    // Undo files the thread back exactly, even into a folder deleted since, so that
+    // restoring the folder brings the thread back with it. An unknown id is the root.
+    const previousFolderId =
+      thread === null
+        ? null
+        : (readProject({
+            environmentId: target.environmentId,
+            projectId: thread.projectId,
+          })?.threadFolders?.find((folder) => folder.id === thread.threadFolderId)?.id ?? null);
+    const setFolder = (folderId: ThreadFolderId | null) =>
+      setThreadFolderMutation({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId, threadFolderId: folderId },
+      });
+    const action = ThreadUndo.begin("folder", scopedThreadKey(target));
+    const result = await setFolder(threadFolderId);
+    if (result._tag !== "Success") {
+      action.finish();
+      return result;
+    }
+    showThreadUndoNotice({
+      action: "Moved",
+      claim: action,
+      undo: async () => {
+        const restored = await setFolder(previousFolderId);
+        if (
+          restored._tag !== "Success" ||
+          !options.deleteFolderOnUndo ||
+          threadFolderId === null ||
+          thread === null
+        ) {
+          return restored;
+        }
+        return deleteThreadFolderMutation({
+          environmentId: target.environmentId,
+          input: { projectId: thread.projectId, folderId: threadFolderId },
+        });
+      },
+      failureTitle: "Failed to undo move",
+    });
+    return result;
+  };
+
   const unsnoozeThread = async (target: ScopedThreadRef) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
@@ -941,6 +1024,7 @@ export function useThreadActions() {
     confirmAndUnpinThread,
     reorderPinnedThread,
     reorderActiveThread,
+    moveThreadToFolder,
     markThreadUnread,
     setThreadAutoSettle,
     turnThreadIntoProject: (target: ScopedThreadRef) =>

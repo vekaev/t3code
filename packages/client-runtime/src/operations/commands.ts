@@ -23,6 +23,7 @@ import {
   type RunId,
   type RuntimeMode,
   type RuntimeRequestId,
+  type ThreadFolderId,
   type ThreadId,
   type ThreadEnvMode,
   type UploadChatAttachment,
@@ -67,6 +68,27 @@ export interface DeleteProjectInput extends CommandMetadata {
   readonly force?: boolean;
 }
 
+export interface ThreadFolderInput extends CommandMetadata {
+  readonly projectId: ProjectId;
+  readonly folderId: ThreadFolderId;
+}
+
+export interface CreateThreadFolderInput extends ThreadFolderInput {
+  readonly parentFolderId: ThreadFolderId | null;
+  readonly name: string;
+  readonly icon?: ProjectIconOverride | null;
+}
+
+export interface UpdateThreadFolderInput extends ThreadFolderInput {
+  readonly name?: string;
+  readonly icon?: ProjectIconOverride | null;
+  /** Moves the folder; null moves it to the project root. */
+  readonly parentFolderId?: ThreadFolderId | null;
+}
+
+export type DeleteThreadFolderInput = ThreadFolderInput;
+export type RestoreThreadFolderInput = ThreadFolderInput;
+
 export interface CreateThreadInput extends CommandMetadata {
   readonly threadId: ThreadId;
   readonly projectId: ProjectId;
@@ -102,6 +124,10 @@ export interface ReorderPinnedThreadInput extends ThreadCommandInput {
 
 export interface ReorderActiveThreadInput extends ThreadCommandInput {
   readonly orderKey: string;
+}
+
+export interface SetThreadFolderInput extends ThreadCommandInput {
+  readonly threadFolderId: ThreadFolderId | null;
 }
 
 export interface SnoozeThreadInput extends ThreadCommandInput {
@@ -323,6 +349,36 @@ const mutateProject = Effect.fn("EnvironmentCommands.mutateProject")(function* (
         readonly commandId: CommandId;
         readonly projectId: ProjectId;
         readonly force?: boolean;
+      }
+    | {
+        readonly type: "project.thread-folder.create";
+        readonly commandId: CommandId;
+        readonly projectId: ProjectId;
+        readonly folderId: ThreadFolderId;
+        readonly parentFolderId: ThreadFolderId | null;
+        readonly name: string;
+        readonly icon?: ProjectIconOverride | null;
+      }
+    | {
+        readonly type: "project.thread-folder.update";
+        readonly commandId: CommandId;
+        readonly projectId: ProjectId;
+        readonly folderId: ThreadFolderId;
+        readonly name?: string;
+        readonly icon?: ProjectIconOverride | null;
+        readonly parentFolderId?: ThreadFolderId | null;
+      }
+    | {
+        readonly type: "project.thread-folder.delete";
+        readonly commandId: CommandId;
+        readonly projectId: ProjectId;
+        readonly folderId: ThreadFolderId;
+      }
+    | {
+        readonly type: "project.thread-folder.restore";
+        readonly commandId: CommandId;
+        readonly projectId: ProjectId;
+        readonly folderId: ThreadFolderId;
       },
 ) {
   return yield* request(WS_METHODS.projectsMutate, mutation);
@@ -377,6 +433,56 @@ export const deleteProject = Effect.fn("EnvironmentCommands.deleteProject")(func
     commandId: yield* allocateCommandId(input),
     projectId: input.projectId,
     ...(input.force === undefined ? {} : { force: input.force }),
+  });
+});
+
+export const createThreadFolder = Effect.fn("EnvironmentCommands.createThreadFolder")(function* (
+  input: CreateThreadFolderInput,
+) {
+  return yield* mutateProject({
+    type: "project.thread-folder.create",
+    commandId: yield* allocateCommandId(input),
+    projectId: input.projectId,
+    folderId: input.folderId,
+    parentFolderId: input.parentFolderId,
+    name: input.name,
+    ...(input.icon === undefined ? {} : { icon: input.icon }),
+  });
+});
+
+export const updateThreadFolder = Effect.fn("EnvironmentCommands.updateThreadFolder")(function* (
+  input: UpdateThreadFolderInput,
+) {
+  return yield* mutateProject({
+    type: "project.thread-folder.update",
+    commandId: yield* allocateCommandId(input),
+    projectId: input.projectId,
+    folderId: input.folderId,
+    ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.icon === undefined ? {} : { icon: input.icon }),
+    ...(input.parentFolderId === undefined ? {} : { parentFolderId: input.parentFolderId }),
+  });
+});
+
+export const deleteThreadFolder = Effect.fn("EnvironmentCommands.deleteThreadFolder")(function* (
+  input: DeleteThreadFolderInput,
+) {
+  return yield* mutateProject({
+    type: "project.thread-folder.delete",
+    commandId: yield* allocateCommandId(input),
+    projectId: input.projectId,
+    folderId: input.folderId,
+  });
+});
+
+export const restoreThreadFolder = Effect.fn("EnvironmentCommands.restoreThreadFolder")(function* (
+  input: RestoreThreadFolderInput,
+) {
+  return yield* mutateProject({
+    type: "project.thread-folder.restore",
+    commandId: yield* allocateCommandId(input),
+    projectId: input.projectId,
+    folderId: input.folderId,
   });
 });
 
@@ -524,6 +630,17 @@ export const reorderActiveThread = Effect.fn("EnvironmentCommands.reorderActiveT
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     orderKey: input.orderKey,
+  });
+});
+
+export const setThreadFolder = Effect.fn("EnvironmentCommands.setThreadFolder")(function* (
+  input: SetThreadFolderInput,
+) {
+  return yield* dispatch({
+    type: "thread.folder.set",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    threadFolderId: input.threadFolderId,
   });
 });
 

@@ -6,6 +6,7 @@ import {
   StoredProjectIcon,
   ProjectId,
   ProjectScript,
+  StoredThreadFolder,
   ThreadEnvMode,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -39,6 +40,7 @@ export const ProjectRow = Schema.Struct({
   faviconPath: Schema.NullOr(Schema.String),
   projectIcon: Schema.NullOr(StoredProjectIcon),
   scripts: Schema.Array(ProjectScript),
+  threadFolders: Schema.Array(StoredThreadFolder),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -51,6 +53,7 @@ const ProjectDbRow = Schema.Struct({
   autoPull: Schema.BooleanFromBit,
   projectIcon: Schema.NullOr(Schema.fromJsonString(StoredProjectIcon)),
   scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
+  threadFolders: Schema.fromJsonString(Schema.Array(StoredThreadFolder)),
 });
 
 function toShell(row: ProjectRow): OrchestrationProjectShell {
@@ -65,6 +68,7 @@ function toShell(row: ProjectRow): OrchestrationProjectShell {
     faviconPath: row.faviconPath,
     projectIcon: row.projectIcon,
     scripts: row.scripts,
+    ...(row.threadFolders.length === 0 ? {} : { threadFolders: row.threadFolders }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -120,6 +124,7 @@ export const make = Effect.gen(function* () {
         favicon_path AS "faviconPath",
         project_icon_json AS "projectIcon",
         scripts_json AS "scripts",
+        COALESCE(thread_folders_json, '[]') AS "threadFolders",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         deleted_at AS "deletedAt"
@@ -150,6 +155,7 @@ export const make = Effect.gen(function* () {
             favicon_path,
             project_icon_json,
             scripts_json,
+            thread_folders_json,
             created_at,
             updated_at,
             deleted_at
@@ -164,6 +170,7 @@ export const make = Effect.gen(function* () {
             ${encoded.faviconPath},
             ${encoded.projectIcon},
             ${encoded.scripts},
+            ${encoded.threadFolders},
             ${encoded.createdAt},
             ${encoded.updatedAt},
             ${encoded.deletedAt}
@@ -178,6 +185,7 @@ export const make = Effect.gen(function* () {
             favicon_path = excluded.favicon_path,
             project_icon_json = excluded.project_icon_json,
             scripts_json = excluded.scripts_json,
+            thread_folders_json = excluded.thread_folders_json,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at,
             deleted_at = excluded.deleted_at
@@ -226,6 +234,7 @@ export const make = Effect.gen(function* () {
           faviconPath: payload.faviconPath ?? null,
           projectIcon: payload.projectIcon ?? null,
           scripts: payload.scripts,
+          threadFolders: [],
           createdAt: payload.createdAt,
           updatedAt: payload.updatedAt,
           deletedAt: null,
@@ -256,6 +265,7 @@ export const make = Effect.gen(function* () {
         ...(payload.faviconPath === undefined ? {} : { faviconPath: payload.faviconPath }),
         ...(payload.projectIcon === undefined ? {} : { projectIcon: payload.projectIcon }),
         ...(payload.scripts === undefined ? {} : { scripts: payload.scripts }),
+        ...(payload.threadFolders === undefined ? {} : { threadFolders: payload.threadFolders }),
         updatedAt: payload.updatedAt,
       }).pipe(mapError("apply"));
     },

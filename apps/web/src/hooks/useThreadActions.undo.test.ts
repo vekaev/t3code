@@ -1,8 +1,9 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadFolderId, ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useThreadActions } from "./useThreadActions";
+import { projectEnvironment } from "../state/projects";
 import { threadEnvironment } from "../state/threads";
 import { toastManager } from "../components/ui/toast";
 import { useThreadUndoNotice } from "./showThreadUndoNotice";
@@ -16,6 +17,8 @@ const commands = vi.hoisted(() => ({
   unsettle: vi.fn(),
   snooze: vi.fn(),
   unsnooze: vi.fn(),
+  setFolder: vi.fn(),
+  deleteFolder: vi.fn(),
 }));
 const router = vi.hoisted(() => ({
   navigate: vi.fn(async () => {}),
@@ -46,11 +49,32 @@ const threadShell = vi.hoisted(() => ({
   snoozedUntil: null as string | null,
   projectId: "project",
   environmentId: "undo-env",
+  threadFolderId: null as string | null,
   session: null,
+}));
+const project = vi.hoisted(() => ({
+  threadFolders: [
+    {
+      id: "plans",
+      parentFolderId: null,
+      name: "Plans",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      deletedAt: null,
+    },
+    {
+      id: "drafts",
+      parentFolderId: "plans",
+      name: "Drafts",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      deletedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ],
 }));
 vi.mock("../state/entities", async (original) => ({
   ...(await original<typeof import("../state/entities")>()),
   readEnvironmentServerConfigLoaded: () => true,
+  readEnvironmentSupportsThreadFolders: () => true,
+  readProject: () => project,
   readThreadShell: () => threadShell,
 }));
 vi.mock("../state/use-atom-command", () => ({
@@ -72,6 +96,10 @@ vi.mock("../state/use-atom-command", () => ({
         return commands.snooze;
       case threadEnvironment.unsnooze:
         return commands.unsnooze;
+      case threadEnvironment.setFolder:
+        return commands.setFolder;
+      case projectEnvironment.deleteThreadFolder:
+        return commands.deleteFolder;
       default:
         return vi.fn();
     }
@@ -97,6 +125,7 @@ beforeEach(() => {
   router.state.matches[0]!.params = {};
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
+  threadShell.threadFolderId = null;
 });
 afterEach(() => {
   vi.runAllTimers();
@@ -173,6 +202,38 @@ describe("unpin Undo", () => {
     });
     await latestUndo();
     expect(commands.pin).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("move to folder Undo", () => {
+  it("returns the thread to the exact folder it was in, even one deleted since", async () => {
+    threadShell.threadFolderId = "drafts";
+    await useThreadActions().moveThreadToFolder(target, null);
+    expect(useThreadUndoNotice.getState().notice).toMatchObject({ action: "Moved", count: 1 });
+    await currentUndo()();
+    expect(commands.setFolder).toHaveBeenLastCalledWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, threadFolderId: ThreadFolderId.make("drafts") },
+    });
+    expect(commands.deleteFolder).not.toHaveBeenCalled();
+  });
+
+  it("deletes the folder made for the move once the thread is back", async () => {
+    threadShell.threadFolderId = "plans";
+    const folderId = ThreadFolderId.make("new-folder");
+    await useThreadActions().moveThreadToFolder(target, folderId, { deleteFolderOnUndo: true });
+    await currentUndo()();
+    expect(commands.setFolder).toHaveBeenLastCalledWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, threadFolderId: ThreadFolderId.make("plans") },
+    });
+    expect(commands.deleteFolder).toHaveBeenCalledExactlyOnceWith({
+      environmentId: target.environmentId,
+      input: { projectId: threadShell.projectId, folderId },
+    });
+    expect(commands.setFolder.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      commands.deleteFolder.mock.invocationCallOrder[0]!,
+    );
   });
 });
 

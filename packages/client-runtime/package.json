@@ -315,6 +315,10 @@
       "types": "./src/state/threadSort.ts",
       "default": "./src/state/threadSort.ts"
     },
+    "./state/thread-folders": {
+      "types": "./src/state/threadFolders.ts",
+      "default": "./src/state/threadFolders.ts"
+    },
     "./state/thread-inbox": {
       "types": "./src/state/threadInbox.ts",
       "default": "./src/state/threadInbox.ts"

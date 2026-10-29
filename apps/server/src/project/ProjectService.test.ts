@@ -3,7 +3,13 @@ import * as Queue from "effect/Queue";
 import * as Tracer from "effect/Tracer";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CommandId, type Project, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  CommandId,
+  type Project,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadFolderId,
+} from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -389,6 +395,107 @@ it.layer(layerTest)("ProjectService", (it) => {
     }),
   );
 
+  it.effect("arranges thread folders once per command id without bumping the project", () =>
+    Effect.gen(function* () {
+      const service = yield* ProjectService.ProjectService;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = ProjectId.make("project:folders");
+      const folderId = ThreadFolderId.make("folder:revenue");
+      const created = yield* service.create({
+        commandId: CommandId.make("command:folders:create"),
+        projectId,
+        title: "Folders",
+        workspaceRoot: "/work/folders",
+      });
+      assert.isUndefined(created.threadFolders);
+      yield* TestClock.adjust("1 minute");
+      const createFolder = {
+        commandId: CommandId.make("command:folders:folder"),
+        projectId,
+        folderId,
+        parentFolderId: null,
+        name: "Increase revenue",
+      };
+      const withFolder = yield* service.createThreadFolder(createFolder);
+      assert.deepEqual(yield* service.createThreadFolder(createFolder), withFolder);
+      assert.equal(withFolder.updatedAt, created.updatedAt);
+      const rename = {
+        commandId: CommandId.make("command:folders:rename"),
+        projectId,
+        folderId,
+        name: "Revenue",
+        icon: { kind: "emoji" as const, emoji: "💰" },
+      };
+      yield* service.updateThreadFolder(rename);
+      yield* service.updateThreadFolder(rename);
+      const target = { projectId, folderId };
+      const deleted = yield* service.deleteThreadFolder({
+        ...target,
+        commandId: CommandId.make("command:folders:delete"),
+      });
+      assert.isNotNull(deleted.threadFolders?.[0]?.deletedAt);
+      const restored = yield* service.restoreThreadFolder({
+        ...target,
+        commandId: CommandId.make("command:folders:restore"),
+      });
+      assert.deepEqual(restored.threadFolders, [
+        {
+          id: folderId,
+          parentFolderId: null,
+          name: "Revenue",
+          icon: { kind: "emoji", emoji: "💰" },
+          createdAt: withFolder.threadFolders?.[0]?.createdAt ?? "",
+          deletedAt: null,
+        },
+      ]);
+      assert.equal(restored.updatedAt, created.updatedAt);
+      const events = yield* sql<{ readonly event_type: string }>`
+        SELECT event_type FROM orchestration_events WHERE stream_id = ${projectId} ORDER BY sequence
+      `;
+      assert.deepEqual(
+        events.map((row) => row.event_type),
+        ["project.created", ...Array.from({ length: 4 }, () => "project.meta-updated")],
+      );
+    }),
+  );
+
+  it.effect("replays a rejected folder receipt instead of re-planning it", () =>
+    Effect.gen(function* () {
+      const service = yield* ProjectService.ProjectService;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = ProjectId.make("project:folders-rejected");
+      yield* service.create({
+        commandId: CommandId.make("command:folders-rejected:create"),
+        projectId,
+        title: "Rejected folders",
+        workspaceRoot: "/work/folders-rejected",
+      });
+      const orphan = {
+        commandId: CommandId.make("command:folders-rejected:orphan"),
+        projectId,
+        folderId: ThreadFolderId.make("folder:orphan"),
+        parentFolderId: ThreadFolderId.make("folder:missing"),
+        name: "Orphan",
+      };
+      assert.equal(
+        (yield* service.createThreadFolder(orphan).pipe(Effect.flip))._tag,
+        "ProjectOperationError",
+      );
+      const replayed = yield* service
+        .createThreadFolder({ ...orphan, parentFolderId: null })
+        .pipe(Effect.flip);
+      assert.include(
+        String(replayed._tag === "ProjectOperationError" && replayed.cause),
+        "does not exist",
+      );
+      const receipts = yield* sql<{ readonly status: string }>`
+        SELECT status FROM orchestration_command_receipts WHERE command_id = ${orphan.commandId}
+      `;
+      assert.deepEqual(receipts, [{ status: "rejected" }]);
+      assert.isUndefined(Option.getOrThrow(yield* service.getById(projectId)).threadFolders);
+    }),
+  );
+
   it.effect("rejects a workspace another active project holds", () =>
     Effect.gen(function* () {
       const service = yield* ProjectService.ProjectService;
@@ -461,6 +568,12 @@ it.layer(layerTest)("ProjectService", (it) => {
         title: "Delete retry",
         workspaceRoot: "/work/delete-retry",
       });
+      // Settle background enrichment so it cannot land between the delete and its retry.
+      yield* waitForProject(
+        service,
+        projectId,
+        (project) => project.repositoryIdentity !== null && project.faviconPath !== null,
+      );
       const input = { commandId: CommandId.make("command:delete-retry:delete"), projectId };
       const deleted = yield* service.delete(input);
       assert.deepEqual(yield* service.delete(input), deleted);

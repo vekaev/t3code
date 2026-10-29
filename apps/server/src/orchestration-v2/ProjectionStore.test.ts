@@ -23,6 +23,7 @@ import {
   RuntimeRequestId,
   RunAttemptId,
   RunId,
+  ThreadFolderId,
   ThreadId,
   TurnItemId,
   type ThreadPullRequestLink,
@@ -951,13 +952,25 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
   assert.deepEqual(reordered.updatedAt, createdAt);
   assert.equal(reordered.thread.activeOrderKey, "a");
 
+  const threadFolderId = ThreadFolderId.make("folder:background-updates");
+  yield* store.apply({
+    id: EventId.make("event:background-updates:folder-set"),
+    type: "thread.folder-set",
+    threadId,
+    occurredAt: DateTime.add(createdAt, { minutes: 52 }),
+    payload: { ...reordered.thread, threadFolderId },
+  });
+  const filed = yield* readActivity;
+  assert.equal(filed.thread.threadFolderId, threadFolderId);
+  assert.equal((yield* store.getThreadShell(threadId))?.threadFolderId, threadFolderId);
+
   // An already-unpinned thread keeps its activity time even when replay's envelope advances.
   yield* store.apply({
     id: EventId.make("event:background-updates:already-unpinned"),
     type: "thread.unpinned",
     threadId,
     occurredAt: DateTime.add(createdAt, { minutes: 55 }),
-    payload: { ...reordered.thread, pinnedAt: null, pinOrderKey: null },
+    payload: { ...filed.thread, pinnedAt: null, pinOrderKey: null },
   });
   yield* readActivity;
 });

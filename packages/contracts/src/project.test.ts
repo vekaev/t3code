@@ -3,9 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { ApplicationProjectMetaUpdatedPayload } from "./applicationEvent.ts";
+import { ThreadFolderId } from "./baseSchemas.ts";
 import { OrchestrationProjectShell } from "./orchestrationProject.ts";
 
 import {
+  Project,
   ProjectFaviconPath,
   ReceivedProjectIcon,
   StoredProjectIcon,
@@ -16,6 +19,9 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  resolveLiveThreadFolderId,
+  threadFolderAncestorIds,
+  threadFolderDepth,
 } from "./project.ts";
 
 const decodeProjectCreatePayload = Schema.decodeUnknownSync(ProjectCreatePayload);
@@ -175,5 +181,83 @@ effectIt.effect("an icon kind from a newer server shows the default icon", () =>
     assert.isNull(shell.projectIcon);
     const broken = yield* Effect.exit(decodeReceivedIcon({ kind: "emoji" }));
     assert.strictEqual(broken._tag, "Failure");
+  }),
+);
+
+describe("thread folders", () => {
+  const deletedAt = "2026-02-01T00:00:00.000Z";
+  const folder = (id: string, parentFolderId: string | null, deleted = false) => ({
+    id: ThreadFolderId.make(id),
+    parentFolderId: parentFolderId === null ? null : ThreadFolderId.make(parentFolderId),
+    name: id,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    deletedAt: deleted ? deletedAt : null,
+  });
+  const id = ThreadFolderId.make;
+
+  it("shows what a deleted folder held under the nearest live folder above it", () => {
+    const folders = [
+      folder("work", null),
+      folder("revenue", "work", true),
+      folder("pricing", "revenue"),
+    ];
+    expect(resolveLiveThreadFolderId(folders, id("revenue"))).toBe("work");
+    expect(resolveLiveThreadFolderId(folders, id("pricing"))).toBe("pricing");
+    expect(threadFolderAncestorIds(folders, id("pricing"))).toEqual(["revenue", "work"]);
+    expect(threadFolderDepth(folders, id("pricing"))).toBe(2);
+    expect(threadFolderDepth(folders, null)).toBe(0);
+  });
+
+  it("treats an unknown folder, or a cycle of deleted folders, as the project root", () => {
+    const cycle = [folder("a", "b", true), folder("b", "a", true)];
+    expect(resolveLiveThreadFolderId(cycle, id("missing"))).toBeNull();
+    expect(resolveLiveThreadFolderId([folder("orphan", "gone", true)], id("orphan"))).toBeNull();
+    expect(resolveLiveThreadFolderId(cycle, id("a"))).toBeNull();
+    expect(threadFolderAncestorIds(cycle, id("a"))).toEqual(["b"]);
+  });
+});
+
+const decodeProject = Schema.decodeUnknownEffect(Project);
+const decodeMetaUpdated = Schema.decodeUnknownEffect(ApplicationProjectMetaUpdatedPayload);
+
+effectIt.effect("reads projects from servers that predate thread folders", () =>
+  Effect.gen(function* () {
+    const project = {
+      id: "project-1",
+      title: "Project",
+      workspaceRoot: "/tmp/project",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    assert.isUndefined((yield* decodeProject({ ...project, deletedAt: null })).threadFolders);
+    assert.isUndefined((yield* decodeProjectShell(project)).threadFolders);
+    const shell = yield* decodeProjectShell({
+      ...project,
+      threadFolders: [
+        {
+          id: "folder-1",
+          parentFolderId: null,
+          name: "Revenue",
+          icon: { kind: "image", url: "https://example.com/a.png" },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          deletedAt: null,
+        },
+      ],
+    });
+    assert.isNull(shell.threadFolders?.[0]?.icon);
+  }),
+);
+
+// An older build replays a newer build's folder events without failing, and ignores the folders.
+effectIt.effect("drops fields a newer build adds to a project update", () =>
+  Effect.gen(function* () {
+    const payload = yield* decodeMetaUpdated({
+      projectId: "project-1",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      laterField: [{ id: "folder-1" }],
+    });
+    assert.deepEqual(Object.keys(payload).toSorted(), ["projectId", "updatedAt"]);
   }),
 );

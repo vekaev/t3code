@@ -3,7 +3,16 @@ import * as Effect from "effect/Effect";
 
 import { type ProjectService } from "./ProjectService.ts";
 
-type ProjectMutations = Pick<ProjectService["Service"], "create" | "delete" | "update">;
+type ProjectMutations = Pick<
+  ProjectService["Service"],
+  | "create"
+  | "delete"
+  | "update"
+  | "createThreadFolder"
+  | "updateThreadFolder"
+  | "deleteThreadFolder"
+  | "restoreThreadFolder"
+>;
 
 export const projectMutationOperation = Effect.fn("projectMutationOperation")(function* (
   projects: ProjectMutations,
@@ -48,6 +57,42 @@ export const projectMutationOperation = Effect.fn("projectMutationOperation")(fu
         commandId: mutation.commandId,
         projectId: mutation.projectId,
         ...(mutation.force === undefined ? {} : { force: mutation.force }),
+      });
+
+    case "project.thread-folder.create":
+      return yield* projects.createThreadFolder({
+        commandId: mutation.commandId,
+        projectId: mutation.projectId,
+        folderId: mutation.folderId,
+        parentFolderId: mutation.parentFolderId,
+        name: mutation.name,
+        ...(mutation.icon === undefined ? {} : { icon: mutation.icon }),
+      });
+
+    case "project.thread-folder.update":
+      return yield* projects.updateThreadFolder({
+        commandId: mutation.commandId,
+        projectId: mutation.projectId,
+        folderId: mutation.folderId,
+        ...(mutation.name === undefined ? {} : { name: mutation.name }),
+        ...(mutation.icon === undefined ? {} : { icon: mutation.icon }),
+        ...(mutation.parentFolderId === undefined
+          ? {}
+          : { parentFolderId: mutation.parentFolderId }),
+      });
+
+    case "project.thread-folder.delete":
+      return yield* projects.deleteThreadFolder({
+        commandId: mutation.commandId,
+        projectId: mutation.projectId,
+        folderId: mutation.folderId,
+      });
+
+    case "project.thread-folder.restore":
+      return yield* projects.restoreThreadFolder({
+        commandId: mutation.commandId,
+        projectId: mutation.projectId,
+        folderId: mutation.folderId,
       });
   }
 });
