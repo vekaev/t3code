@@ -336,6 +336,61 @@ it.effect(
     }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
+it.effect("skips a cron run missed while the server was down and reschedules it", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const dueAt = DateTime.makeZonedUnsafe(
+      { year: 2026, month: 9, day: 9, hour: 9, minute: 0, second: 0, millisecond: 0 },
+      { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+    );
+    const missedAt = DateTime.formatIso(DateTime.toUtc(dueAt));
+    const scheduleJson = '{"type":"cron","expression":"0 9 * * *"}';
+    yield* insertRow(
+      sql,
+      { id: "missed-cron", next: missedAt, enabled: 1, status: "never", scheduleJson },
+      missedAt,
+    );
+    yield* TestClock.setTime(DateTime.toEpochMillis(dueAt) + 20 * 60_000);
+    const expected = DateTime.formatIso(DateTime.toUtc(DateTime.add(dueAt, { days: 1 })));
+    const launches = yield* Ref.make(0);
+    const rescheduled = yield* Deferred.make<void>();
+    const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+            launch: () =>
+              Ref.update(launches, (n) => n + 1).pipe(
+                Effect.andThen(Effect.die("unexpected launch")),
+              ),
+          }),
+          Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+            namedProjectsRoot: "/projects",
+            isScratchProject: () => Effect.succeed(false),
+          }),
+          NodeCrypto.layer,
+          Scheduler.layer,
+        ),
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      yield* service.subscribeList().pipe(
+        Stream.runForEach(({ tasks }) =>
+          tasks[0]?.nextRunAt === expected ? Deferred.succeed(rescheduled, undefined) : Effect.void,
+        ),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(rescheduled);
+      const [task] = (yield* service.list()).tasks;
+      assert.equal(task?.lastRunStatus, "never");
+      assert.equal(task?.runCount, 0);
+      assert.equal(yield* Ref.get(launches), 0);
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
 it.effect("thread cleanup notifies subscribers and a finishing run cannot recreate the task", () =>
   Effect.gen(function* () {
     const started = yield* Deferred.make<void>();

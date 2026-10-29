@@ -118,6 +118,100 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
+it.effect("keeps a due cron run when a save only rewrites the expression", () =>
+  Effect.gen(function* () {
+    const dueAt = DateTime.makeZonedUnsafe(
+      { year: 2026, month: 7, day: 1, hour: 9, minute: 0, second: 0, millisecond: 0 },
+      { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+    );
+    yield* TestClock.setTime(DateTime.toEpochMillis(dueAt) - 1_000);
+
+    const layerDependencies = Layer.mergeAll(
+      NodeCrypto.layer,
+      Scheduler.layer,
+      Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      Layer.mock(SecretRequests.SecretRequests)({}),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      const input = yield* decodeUpsertInput({
+        commandId: "schedule-cron-format",
+        title: "Weekday review",
+        prompt: "Review the open pull requests.",
+        enabled: true,
+        schedule: { type: "cron", expression: " 0  9 * *\tMON-FRI " },
+        projectId: "project-schedule-cron-format",
+        workspaceStrategy: { type: "root" },
+        modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      });
+      const created = yield* service.upsert(input);
+      const expectedDueAt = DateTime.formatIso(DateTime.toUtc(dueAt));
+      expect(created.task.schedule).toEqual({ type: "cron", expression: "0 9 * * MON-FRI" });
+      expect(created.task.nextRunAt).toBe(expectedDueAt);
+
+      yield* TestClock.setTime(DateTime.toEpochMillis(dueAt) + 1_000);
+      const update = yield* decodeUpsertInput({
+        ...input,
+        id: created.task.id,
+        schedule: { type: "cron", expression: "0 9 * * 1-5" },
+      });
+      expect((yield* service.upsert(update)).task.nextRunAt).toBe(expectedDueAt);
+
+      const rescheduled = yield* service.upsert({
+        ...update,
+        schedule: { type: "cron", expression: "30 9 * * 1-5" },
+      });
+      expect(rescheduled.task.nextRunAt).toBe(
+        DateTime.formatIso(DateTime.toUtc(DateTime.add(dueAt, { minutes: 30 }))),
+      );
+    }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect("rejects a cron expression that never runs, even when paused", () =>
+  Effect.gen(function* () {
+    const layerDependencies = Layer.mergeAll(
+      NodeCrypto.layer,
+      Scheduler.layer,
+      Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      Layer.mock(SecretRequests.SecretRequests)({}),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      const input = yield* decodeUpsertInput({
+        title: "Leap review",
+        prompt: "Review the open pull requests.",
+        enabled: true,
+        schedule: { type: "interval", everyMs: 60_000 },
+        projectId: "project-schedule-cron-never",
+        workspaceStrategy: { type: "root" },
+        modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      });
+      // Typed input bypasses the contract filter to reach the service's own check.
+      const schedule = { type: "cron", expression: "0 0 30 2 *" } as const;
+      for (const enabled of [true, false]) {
+        const failure = yield* service.upsert({ ...input, enabled, schedule }).pipe(Effect.flip);
+        expect(failure.message).toBe("This cron expression never runs.");
+      }
+      expect((yield* service.list()).tasks).toEqual([]);
+    }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
 it.effect("keeps the task list order when a toggle or edit rewrites updated_at", () =>
   Effect.gen(function* () {
     yield* TestClock.setTime(Date.parse("2026-07-01T09:00:00.000Z"));

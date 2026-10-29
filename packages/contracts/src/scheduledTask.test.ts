@@ -33,6 +33,35 @@ it.each(["literal", " ", "\t\n", "{{body.bad", "{{unknown.field}}"])(
     ).toThrow();
   },
 );
+describe("cron schedules", () => {
+  it.each(["17 0,4,8-20 * * *", "0 9 * * MON-FRI", "0 9 * * 7", "0 0 30 2 1"])(
+    "accepts %s",
+    (expression) => {
+      expect(decodeUpsertSchedule({ type: "cron", expression })).toEqual({
+        type: "cron",
+        expression,
+      });
+    },
+  );
+
+  it.each([
+    ["*/10 * * * * *", "Use five fields: minute hour day-of-month month weekday."],
+    ["@daily", "Use five fields: minute hour day-of-month month weekday."],
+    ["0 9 L * *", "Day of month: Expected a positive integer"],
+    ["60 * * * *", "Minute: Expected a value between 0 and 59"],
+    ["0 0 30 2 *", "This schedule never runs."],
+    ["0 0 30 2 */2", "This schedule never runs."],
+  ])("rejects %s", (expression, message) => {
+    expect(() => decodeUpsertSchedule({ type: "cron", expression })).toThrow(message);
+  });
+
+  it("keeps a stored expression readable after the save rules reject it", () => {
+    const stored = { type: "cron", expression: "0 0 30 2 *" };
+    expect(() => decodeUpsertSchedule(stored)).toThrow();
+    expect(decodeSchedule(stored)).toEqual(stored);
+  });
+});
+
 describe("webhook filters", () => {
   const accepts = (filters: unknown) => {
     try {

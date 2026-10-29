@@ -129,3 +129,38 @@ it.effect.each([
     Effect.provide(SqlitePersistence.layerMemory),
   ),
 );
+
+it.effect.each([
+  {
+    expression: "30 2 * * *",
+    from: "2026-03-08T05:00:00.000Z",
+    expected: "2026-03-08T07:30:00.000Z",
+  },
+  {
+    expression: "0 9 * * *",
+    from: "2026-03-07T20:00:00.000Z",
+    expected: "2026-03-08T13:00:00.000Z",
+  },
+  {
+    expression: "30 1 * * *",
+    from: "2026-11-01T04:00:00.000Z",
+    expected: "2026-11-01T05:30:00.000Z",
+  },
+] as const)(
+  "keeps cron $expression on the local calendar from $from",
+  ({ expression, from, expected }) =>
+    Effect.gen(function* () {
+      vi.stubEnv("TZ", "America/New_York");
+      yield* TestClock.setTime(Date.parse(from));
+      yield* Effect.gen(function* () {
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        const decoded = yield* decodeInput({ ...input, schedule: { type: "cron", expression } });
+        const created = yield* service.upsert(decoded);
+        expect(created.task.nextRunAt).toBe(expected);
+        expect((yield* service.list()).tasks[0]?.nextRunAt).toBe(expected);
+      }).pipe(Effect.provide(serviceLayer));
+    }).pipe(
+      Effect.provideService(ServerActivation, Effect.never),
+      Effect.provide(SqlitePersistence.layerMemory),
+    ),
+);

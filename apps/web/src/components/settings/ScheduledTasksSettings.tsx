@@ -75,6 +75,7 @@ import { SettingsGroup } from "./SettingsGroup";
 import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
+  cronDraftError,
   webhookDraftErrors,
   webhookDeliveryLabel,
   matchesScheduledTaskScope,
@@ -134,6 +135,7 @@ const EMPTY_DRAFT: DraftState = {
   intervalMinutes: "15",
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
+  cronExpression: "0 9 * * 1-5",
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -289,6 +291,7 @@ export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
       ? `Every ${minutes} min`
       : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
   }
+  if (schedule.type === "cron") return `Cron ${schedule.expression}`;
   const weekdays = schedule.weekdays ?? [];
   const days =
     weekdays.length === 0
@@ -1148,6 +1151,12 @@ function ScheduledTaskEditorForm({
     task ? taskToDraft(task) : { ...EMPTY_DRAFT, projectId: projects[0]?.id ?? "" },
   );
   const submissionPending = useRef(false);
+  const supportsCron =
+    environment?.serverConfig?.environment.capabilities.scheduledTaskCron === true;
+  const cronError =
+    connected && !supportsCron && draft.scheduleMode === "cron"
+      ? "Update T3 Code on this environment to use custom schedules."
+      : cronDraftError(draft);
   const editingTaskMissing =
     draft.editingId !== null &&
     tasksQuery.data !== null &&
@@ -1213,6 +1222,10 @@ function ScheduledTaskEditorForm({
     const parsedFilters = parseWebhookFilterDrafts(draft.filters);
     if (draft.scheduleMode === "webhook" && "error" in parsedFilters) {
       reportFailure("Invalid filter", parsedFilters.error);
+      return;
+    }
+    if (cronError !== null) {
+      reportFailure("Invalid schedule", cronError);
       return;
     }
     const schedule = scheduleFromDraft(draft);
@@ -1514,7 +1527,12 @@ function ScheduledTaskEditorForm({
                 value={[draft.scheduleMode]}
                 onValueChange={(values) => {
                   const mode = values[0] as ScheduleMode | undefined;
-                  if (mode === "fixed" || mode === "interval" || mode === "webhook")
+                  if (
+                    mode === "fixed" ||
+                    mode === "interval" ||
+                    mode === "cron" ||
+                    mode === "webhook"
+                  )
                     setDraft((current) => ({
                       ...current,
                       scheduleMode: mode,
@@ -1527,6 +1545,9 @@ function ScheduledTaskEditorForm({
               >
                 <Toggle value="fixed">At a time</Toggle>
                 <Toggle value="interval">Every interval</Toggle>
+                {supportsCron || draft.scheduleMode === "cron" ? (
+                  <Toggle value="cron">Custom</Toggle>
+                ) : null}
                 <Toggle value="webhook">On webhook</Toggle>
               </ToggleGroup>
             </div>
@@ -1738,6 +1759,36 @@ function ScheduledTaskEditorForm({
                   ))}
                 </ToggleGroup>
               </div>
+            ) : draft.scheduleMode === "cron" ? (
+              <Field
+                label="Cron expression"
+                hint="minute hour day month weekday"
+                htmlFor="scheduled-task-cron"
+              >
+                <Input
+                  id="scheduled-task-cron"
+                  font="mono"
+                  placeholder="0 9 * * 1-5"
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-invalid={cronError !== null || undefined}
+                  aria-describedby="scheduled-task-cron-help"
+                  value={draft.cronExpression}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, cronExpression: event.target.value }))
+                  }
+                />
+                <p
+                  id="scheduled-task-cron-help"
+                  className={
+                    cronError === null
+                      ? "text-xs text-muted-foreground"
+                      : "text-xs text-destructive"
+                  }
+                >
+                  {cronError ?? "Runs in this environment's time zone."}
+                </p>
+              </Field>
             ) : (
               <div className="flex items-center gap-2">
                 <Label htmlFor="scheduled-task-interval">Run every</Label>

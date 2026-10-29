@@ -15,6 +15,7 @@ import {
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
   MAX_WEBHOOK_FILTERS,
   resolveEnvironmentMachineKind,
+  scheduledTaskCronExpressionError,
 } from "@t3tools/contracts";
 import type { MenuAction } from "@react-native-menu/menu";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
@@ -109,6 +110,7 @@ const DAYS = [
 function describeSchedule(task: ScheduledTask): string {
   if (task.schedule.type === "webhook") return "On webhook";
   if (task.schedule.type === "interval") return formatScheduledTaskInterval(task.schedule.everyMs);
+  if (task.schedule.type === "cron") return `Cron ${task.schedule.expression}`;
   const days = task.schedule.weekdays?.length ? repeatLabel(task.schedule.weekdays) : "Every day";
   return `${days} at ${formatTime(task.schedule.timeOfDay)}`;
 }
@@ -149,6 +151,8 @@ function FormField(props: {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly keyboardType?: "decimal-pad" | "number-pad";
+  readonly autoCapitalize?: "none";
+  readonly autoCorrect?: boolean;
   readonly disabled?: boolean;
   readonly placeholder?: string;
   readonly borderTop?: boolean;
@@ -167,6 +171,8 @@ function FormField(props: {
         onChangeText={props.onChange}
         textAlignVertical="center"
         keyboardType={props.keyboardType}
+        autoCapitalize={props.autoCapitalize}
+        autoCorrect={props.autoCorrect}
         placeholder={props.placeholder}
         placeholderTextColorClassName="accent-foreground-muted"
         className="min-h-8 font-sans text-base text-foreground"
@@ -684,6 +690,11 @@ function TaskForm({
   const environmentUnavailable = !availableTargets.some(
     (target) => target.environmentId === environmentId,
   );
+  const cronSupported = config?.environment.capabilities.scheduledTaskCron === true;
+  const cronError =
+    draft.schedule.mode === "cron"
+      ? scheduledTaskCronExpressionError(draft.schedule.cronExpression)
+      : null;
 
   const failure = (title: string, result: AtomCommandResult<unknown, unknown>) => {
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -728,6 +739,17 @@ function TaskForm({
         "Invalid webhook settings",
         "Each dedupe key must contain a valid request placeholder. The coalesce window must be whole seconds from 10 to 3600, or blank.",
       );
+      return;
+    }
+    if (draft.schedule.mode === "cron" && !cronSupported) {
+      Dialog.alert(
+        "Custom schedules unavailable",
+        "Update T3 Code on this environment to use custom schedules.",
+      );
+      return;
+    }
+    if (cronError !== null) {
+      Dialog.alert("Invalid cron expression", cronError);
       return;
     }
     if (
@@ -955,6 +977,9 @@ function TaskForm({
               options={[
                 { value: "fixed_time", label: "At a time" },
                 { value: "interval", label: "Interval" },
+                ...(cronSupported || draft.schedule.mode === "cron"
+                  ? [{ value: "cron" as const, label: "Custom" }]
+                  : []),
                 { value: "webhook", label: "On webhook" },
               ]}
               selected={draft.schedule.mode}
@@ -1115,6 +1140,28 @@ function TaskForm({
                 window from the first delivery closes. Empty keys run normally.
               </Text>
             </>
+          ) : draft.schedule.mode === "cron" ? (
+            <>
+              <FormField
+                label="Cron expression"
+                value={draft.schedule.cronExpression}
+                placeholder="0 9 * * 1-5"
+                autoCapitalize="none"
+                autoCorrect={false}
+                disabled={saving}
+                borderTop
+                onChange={(cronExpression) =>
+                  setDraft({ ...draft, schedule: { ...draft.schedule, cronExpression } })
+                }
+              />
+              {cronError !== null && draft.schedule.cronExpression.trim() ? (
+                <Text className="px-4 pb-3 text-sm text-danger-foreground">{cronError}</Text>
+              ) : (
+                <Text className="px-4 pb-3 text-sm text-foreground-muted">
+                  minute hour day month weekday
+                </Text>
+              )}
+            </>
           ) : (
             <>
               <FormField
@@ -1151,7 +1198,7 @@ function TaskForm({
             />
           </View>
         </SettingsSection>
-        {draft.schedule.mode === "fixed_time" ? (
+        {draft.schedule.mode === "fixed_time" || draft.schedule.mode === "cron" ? (
           <Text className="px-2 text-sm text-foreground-muted">
             Time uses the environment's time zone, which may differ from your phone's.
           </Text>

@@ -8,7 +8,9 @@ import {
 } from "@t3tools/contracts";
 import {
   scheduledTaskDefaultModel,
+  createDraft,
   DEFAULT_SCHEDULE,
+  hasScheduledTaskDraftChanges,
   scheduleDraftForTask,
   scheduleFromDraft,
 } from "./scheduledTaskDraft";
@@ -18,6 +20,17 @@ describe("scheduleDraftForTask", () => {
     const draft = scheduleDraftForTask({ schedule: { type: "interval", everyMs: 30_000 } });
     expect(draft.intervalMinutes).toBe("1");
     expect(scheduleFromDraft(draft)).toEqual({ type: "interval", everyMs: 60_000 });
+  });
+
+  it("opens a cron task as cron and saves its expression with whitespace collapsed", () => {
+    const expression = "17 0,4,8-20 * * *";
+    const draft = scheduleDraftForTask({ schedule: { type: "cron", expression } });
+    expect(draft.mode).toBe("cron");
+    expect(scheduleFromDraft(draft)).toEqual({ type: "cron", expression });
+    expect(scheduleFromDraft({ ...draft, cronExpression: " 0  9 * *\t1-5\n" })).toEqual({
+      type: "cron",
+      expression: "0 9 * * 1-5",
+    });
   });
 
   it("round-trips dedupe settings and rejects invalid windows", () => {
@@ -96,6 +109,13 @@ describe("scheduleFromDraft", () => {
       everyMs,
     });
   });
+
+  it.each(["", "* * * *", "0 0 9 * * 1", "@daily", "60 * * * *", "0 0 30 2 *"])(
+    "rejects the cron expression %j",
+    (cronExpression) => {
+      expect(scheduleFromDraft({ ...DEFAULT_SCHEDULE, mode: "cron", cronExpression })).toBeNull();
+    },
+  );
 });
 
 describe("scheduled task model defaults", () => {
@@ -195,4 +215,15 @@ it("rejects dedupe keys without valid request placeholders", () => {
   expect(
     scheduleFromDraft({ ...DEFAULT_SCHEDULE, mode: "webhook", coalesceKey: "{{body.bad" }),
   ).toBeNull();
+});
+
+it("counts an edit to only the cron expression as an unsaved change", () => {
+  const draft = createDraft(null, null);
+  const cron = { ...draft, schedule: { ...draft.schedule, mode: "cron" as const } };
+  expect(
+    hasScheduledTaskDraftChanges(cron, {
+      ...cron,
+      schedule: { ...cron.schedule, cronExpression: "0 10 * * 1-5" },
+    }),
+  ).toBe(true);
 });
