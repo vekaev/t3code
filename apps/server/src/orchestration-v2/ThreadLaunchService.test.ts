@@ -218,6 +218,10 @@ function makeHarness(options: HarnessOptions = {}) {
       bootstrap: () => Effect.die("unused"),
       update: () => Effect.die("unused"),
       delete: () => Effect.die("unused"),
+      createThreadFolder: () => Effect.die("unused"),
+      updateThreadFolder: () => Effect.die("unused"),
+      deleteThreadFolder: () => Effect.die("unused"),
+      restoreThreadFolder: () => Effect.die("unused"),
       listPage: () => Effect.die("unused"),
       getById: (id) =>
         Effect.succeed(
@@ -320,6 +324,7 @@ function makeHarness(options: HarnessOptions = {}) {
               trackedFolders: [],
               pinnedAt: null,
               archivedAt: null,
+              threadFolders: [],
               createdAt: project.createdAt,
               updatedAt: project.updatedAt,
               deletedAt: project.deletedAt,

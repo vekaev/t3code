@@ -43,6 +43,7 @@ import {
   RunId,
   RuntimeRequestId,
   ScheduledTaskId,
+  ThreadFolderId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnItemId,
@@ -552,6 +553,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Absent on threads written before tags existed; read as empty. */
   tags: Schema.optional(StoredThreadTags),
+  threadFolderId: Schema.optional(Schema.NullOr(ThreadFolderId)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2216,6 +2218,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.pin-reordered",
       "thread.active-reordered",
       "thread.tags-updated",
+      "thread.folder-set",
       "thread.visited",
       "thread.marked-unread",
       "thread.metadata-updated",
@@ -2488,6 +2491,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Absent on threads written before tags existed; read as empty. */
   tags: Schema.optional(StoredThreadTags),
+  threadFolderId: Schema.optional(Schema.NullOr(ThreadFolderId)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   opens: Schema.optional(LenientThreadOpens),
   titleRegeneration: Schema.optional(
@@ -3177,6 +3181,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.pin-reordered",
       "thread.active-reordered",
       "thread.tags-updated",
+      "thread.folder-set",
       "thread.visited",
       "thread.marked-unread",
       "thread.pull-request-synced",
@@ -3470,6 +3475,12 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     orderKey: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.folder.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    threadFolderId: Schema.NullOr(ThreadFolderId),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.visit"),

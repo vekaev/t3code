@@ -49,6 +49,7 @@ import {
   CircleDotDashedIcon,
   ClockIcon,
   FolderGit2Icon,
+  FolderIcon,
   GitBranchIcon,
   MessageCircleQuestionIcon,
   PinIcon,
@@ -108,6 +109,7 @@ import {
   useSidebarRowSubscriptionLease,
   setFileDragActive,
 } from "../Sidebar.logic";
+import { sidebarTreeIndent } from "../Sidebar.folders";
 import { resolveLocalCheckoutBranchMismatch } from "../BranchToolbar.logic";
 import {
   LINKED_ITEMS_PREVIEW_LIMIT,
@@ -615,6 +617,10 @@ type SidebarThreadRowProps = {
   snoozeSupported: boolean;
   pinningSupported: boolean;
   isPinned: boolean;
+  /** Above 0 inside a folder. */
+  depth?: number | undefined;
+  /** The thread's folder; outside the folder block, such as on a shelf, it shows as a chip. */
+  folderName?: string | null | undefined;
   sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   dragOverPinned: boolean;
@@ -1066,6 +1072,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
   );
   const sortable = props.sortable;
+  const indent = sidebarTreeIndent(props.depth ?? 0);
   const sortableRootProps = sortable
     ? {
         ref: sortable.setNodeRef,
@@ -1078,10 +1085,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             !sortable.isDragging && sortable.transform?.scaleY === 0
               ? ("hidden" as const)
               : undefined,
+          ...(indent > 0 ? { paddingInlineStart: indent } : {}),
         },
         ...sortable.listeners,
       }
-    : {};
+    : indent > 0
+      ? { style: { paddingInlineStart: indent } }
+      : {};
   const destinationVerb = sortable?.isDragging
     ? props.dropVerb
     : props.sweepAction === "unsnooze"
@@ -1097,12 +1107,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       </span>
     ) : null;
 
-  const accessibility = resolveSidebarRowAccessibility({
-    title: thread.title,
-    statusLabel: pendingSync ? gt("Pending") : (topStatus?.label ?? null),
-    projectDisplayName: props.projectDisplayName,
-    isActive: props.isActive,
-  });
+  const accessibility = resolveSidebarRowAccessibility(
+    {
+      title: thread.title,
+      statusLabel: pendingSync ? gt("Pending") : (topStatus?.label ?? null),
+      folderName: props.folderName ?? null,
+      projectDisplayName: props.projectDisplayName,
+      isActive: props.isActive,
+    },
+    messages,
+  );
 
   const title = isRenaming ? (
     <ThreadRenameInput
@@ -1246,6 +1260,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <SquarePenIcon aria-hidden className={draftPenClassName} />
     </SharedTooltipTrigger>
   ) : null;
+  const folderChip =
+    props.folderName && !props.depth ? (
+      <span className="inline-flex max-w-[45%] min-w-0 shrink-0 items-center gap-1 text-xs text-secondary-label">
+        <FolderIcon aria-hidden className="size-3 shrink-0" />
+        <span className="truncate">{props.folderName}</span>
+      </span>
+    ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1397,6 +1418,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             )}
             {draftIndicator}
             {title}
+            {folderChip}
             {multiline ? titleLineIcons : null}
             {pinIndicator}
             {multiline ? null : terminalStatusIcon}
@@ -1610,6 +1632,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             ) : (
               <span className="flex-1" />
             )}
+            {folderChip}
             {sortable?.isDragging ? (
               dragDestination
             ) : (

@@ -16,7 +16,7 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 
 type UndoOptions = {
-  action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+  action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Moved" | "Discarded" | "Deleted";
   undo: () => Promise<AtomCommandResult<unknown, unknown>>;
   failureTitle: string;
   claim: ReturnType<typeof ThreadUndo.begin>;
@@ -36,7 +36,9 @@ const SUMMARY = {
   Snoozed: msg("Snoozed {count, plural, one {{count} thread} other {{count} threads}}"),
   Unpinned: msg("Unpinned {count, plural, one {{count} thread} other {{count} threads}}"),
   Archived: msg("Archived {count, plural, one {{count} thread} other {{count} threads}}"),
+  Moved: msg("Moved {count, plural, one {{count} thread} other {{count} threads}}"),
   Discarded: msg("Discarded {count, plural, one {{count} draft} other {{count} drafts}}"),
+  Deleted: msg("Deleted {count, plural, one {{count} folder} other {{count} folders}}"),
 } satisfies Record<UndoOptions["action"], string>;
 
 const UNDONE = {
@@ -44,7 +46,9 @@ const UNDONE = {
   Snoozed: msg("Undid snooze of {count, plural, one {{count} thread} other {{count} threads}}"),
   Unpinned: msg("Undid unpin of {count, plural, one {{count} thread} other {{count} threads}}"),
   Archived: msg("Undid archive of {count, plural, one {{count} thread} other {{count} threads}}"),
+  Moved: msg("Undid move of {count, plural, one {{count} thread} other {{count} threads}}"),
   Discarded: msg("Undid discard of {count, plural, one {{count} draft} other {{count} drafts}}"),
+  Deleted: msg("Undid delete of {count, plural, one {{count} folder} other {{count} folders}}"),
 } satisfies Record<UndoOptions["action"], string>;
 
 function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {

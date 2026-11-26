@@ -11,6 +11,7 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
   RunId,
+  ThreadFolderId,
   ThreadId,
   TurnItemId,
   WS_METHODS,
@@ -50,6 +51,7 @@ import {
   revertThreadCheckpoint,
   resumeThreadQueue,
   startThreadTurn,
+  updateThreadFolder,
 } from "./commands.ts";
 
 const layerTestRandom = Layer.succeed(
@@ -182,6 +184,47 @@ describe("V2 environment commands", () => {
 
       expect(commands).toEqual([
         { type: "thread.archive", commandId: "queued-command", threadId: "thread-1" },
+      ]);
+    }).pipe(Effect.provide(layerTestRandom)),
+  );
+
+  it.effect("sends only the folder fields that change, so null clears and omitted keeps", () =>
+    Effect.gen(function* () {
+      const projects: ProjectMutation[] = [];
+      const supervisor = yield* makeSupervisor({ commands: [], projects });
+      const projectId = ProjectId.make("project-1");
+      const folderId = ThreadFolderId.make("revenue");
+
+      yield* updateThreadFolder({
+        commandId: CommandId.make("rename"),
+        projectId,
+        folderId,
+        name: "Increase revenue",
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+      yield* updateThreadFolder({
+        commandId: CommandId.make("clear-icon-and-move-to-root"),
+        projectId,
+        folderId,
+        icon: null,
+        parentFolderId: null,
+      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
+
+      expect(projects).toEqual([
+        {
+          type: "project.thread-folder.update",
+          commandId: "rename",
+          projectId,
+          folderId,
+          name: "Increase revenue",
+        },
+        {
+          type: "project.thread-folder.update",
+          commandId: "clear-icon-and-move-to-root",
+          projectId,
+          folderId,
+          icon: null,
+          parentFolderId: null,
+        },
       ]);
     }).pipe(Effect.provide(layerTestRandom)),
   );
