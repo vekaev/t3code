@@ -61,7 +61,12 @@ import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as DueHint from "../scheduling/DueHint.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import { latestRootProviderFailure } from "@t3tools/shared/orchestrationV2ThreadError";
-import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import {
+  isMissedCalendarRun,
+  isSameSchedule,
+  nextScheduledRunAt,
+  normalizeCronExpression,
+} from "./Schedule.ts";
 import {
   redactHeaders,
   redactQuery,
@@ -1348,7 +1353,7 @@ export const layer = Layer.effect(
           due,
           ({ task, dueAt }) =>
             Effect.suspend(() =>
-              isMissedFixedTimeRun(task.schedule, dueAt, now)
+              isMissedCalendarRun(task.schedule, dueAt, now)
                 ? rescheduleMissedRun(
                     task,
                     now,
@@ -1551,7 +1556,12 @@ export const layer = Layer.effect(
             }
           : input.schedule.type === "once"
             ? { type: "once", runAt: iso(DateTime.makeUnsafe(input.schedule.runAt)) }
-            : input.schedule;
+            : input.schedule.type === "cron"
+              ? { type: "cron", expression: normalizeCronExpression(input.schedule.expression) }
+              : input.schedule;
+      if (schedule.type === "cron" && nextScheduledRunAt(schedule, now) === null) {
+        return yield* taskError("This cron expression never runs.", { taskId: id });
+      }
       const webhook =
         input.schedule.type === "webhook"
           ? yield* Effect.gen(function* () {

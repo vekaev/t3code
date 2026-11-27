@@ -56,6 +56,14 @@ Create and manage scheduled tasks in **Settings → Scheduled tasks** (web, desk
 - **Destination**: Choose **New thread each run**, **One thread (continue conversation)**, or **One thread (fresh session each run)**. Deleting a target thread deletes tasks bound to it; archiving a target thread causes runs to fail (settle it instead).
 - **Controls**: Edit, pause, resume, run now (except webhook tasks), or delete from the list.
 
+### Custom schedules
+
+When a time of day, **Once**, or an interval can't describe when a task should run, choose **Custom** as its schedule and enter a five-field cron expression: minute, hour, day of the month, month, and weekday. Times use the environment's time zone. For example, `17 0,4,8-20 * * *` runs at 00:17, 04:17, and every hour from 08:17 to 20:17.
+
+- **Not supported**: Seconds, shortcuts such as `@daily`, and `L` or `?`.
+- **Day of the month and weekday**: When both are set, a day that matches either one runs (`0 9 1 * MON` runs on the 1st and on every Monday). If either one starts with `*`, such as `*/2`, a day must match both (`0 9 */2 * MON` runs only on Mondays with an odd date).
+- **Older environments** don't offer **Custom** until you update them. Agents can also set up a custom schedule when you describe it in chat.
+
 ### Webhook automations
 
 Choose **On webhook** as a task's schedule to trigger runs from external services (e.g., GitHub PR or CI events). A public URL requires a [T3 Connect](./remote-access.md) tunnel; click **Rotate** to invalidate and replace the URL.

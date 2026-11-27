@@ -24,6 +24,7 @@ import {
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
+import { scheduledTaskCronExpressionError } from "@t3tools/client-runtime/contract-labels";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { msg } from "gt-react";
 
@@ -64,6 +65,9 @@ export function scheduleLabel(
     return Number.isInteger(minutes)
       ? resolve(msg("Every {minutes} min", { minutes }))
       : resolve(msg("Every {seconds} sec", { seconds: Math.round(schedule.everyMs / 1000) }));
+  }
+  if (schedule.type === "cron") {
+    return resolve(msg("Cron {expression}", { expression: schedule.expression }));
   }
   const weekdays = [...new Set(schedule.weekdays ?? [])]
     .filter((day) => day >= 0 && day <= 6)
@@ -111,7 +115,7 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
   };
 }
 
-export type ScheduleMode = "fixed" | "once" | "interval" | "webhook";
+export type ScheduleMode = "fixed" | "once" | "interval" | "cron" | "webhook";
 export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
 
 export interface DraftState {
@@ -127,6 +131,7 @@ export interface DraftState {
   /** The stored ISO run time, sent back unchanged when the field was not edited. */
   readonly savedRunAt: string;
   readonly weekdays: ReadonlySet<number>;
+  readonly cronExpression: string;
   readonly projectId: string;
   readonly threadId: string;
   /** The thread the form opened with, so a save can tell a cleared destination from an unbound one. */
@@ -210,6 +215,11 @@ export function scheduleDraftErrors(draft: DraftState, resolve: MessageResolver 
       description: resolve(msg("Coalesce window must be whole seconds from 10 to 3600.")),
     });
   return errors;
+}
+
+export function cronDraftError(draft: DraftState, resolve: MessageResolver = m) {
+  if (draft.scheduleMode !== "cron") return null;
+  return scheduledTaskCronExpressionError(draft.cronExpression, resolve);
 }
 
 const WEBHOOK_DELIVERY_LABELS: Record<string, string> = {
@@ -300,6 +310,10 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
     const everyMs = Math.round(Number(draft.intervalMinutes) * 60_000);
     return { type: "interval", everyMs };
   }
+  if (draft.scheduleMode === "cron") {
+    if (cronDraftError(draft) !== null) return null;
+    return { type: "cron", expression: draft.cronExpression.trim().split(/\s+/).join(" ") };
+  }
   const selectedEveryDay = draft.weekdays.size === 0 || draft.weekdays.size === 7;
   return {
     type: "fixed_time",
@@ -328,6 +342,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     runAt: schedule.type === "once" ? toDateTimeLocalValue(new Date(schedule.runAt)) : "",
     savedRunAt: schedule.type === "once" ? schedule.runAt : "",
     weekdays,
+    cronExpression: schedule.type === "cron" ? schedule.expression : "0 9 * * 1-5",
     projectId: task.projectId,
     threadId: task.threadId ?? "",
     savedThreadId: task.threadId ?? "",
