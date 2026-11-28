@@ -1892,6 +1892,7 @@
   "a0cc19e60dd99851": "Open usage",
   "46694969044eee98": "Focus Next Workspace Area",
   "0a1011328ba42eef": "Focus Previous Workspace Area",
+  "2da097fe7f17f70e": "Open scheduled tasks",
   "90896a7348c4e7ce": "Open settings",
   "1d17dc60c59e0524": "Unpin project",
   "5cfaaa20c460c328": "Pin project",
@@ -8867,6 +8868,7 @@
   "4e0943e8c7a465d1": "File Picker: Toggle",
   "df5fdcdf26a6b52a": "Project Search: Toggle",
   "0ca6fd2b8fcab2c3": "Usage: Toggle",
+  "7275423ce0633397": "Scheduled Tasks: Open",
   "a513d51b71b95674": "Theme: Select",
   "1ffd8427452372e1": "Appearance: Cycle",
   "3a3bb4a7551a87cc": "Theme Editor: Toggle",
@@ -10535,6 +10537,94 @@
     }
   ],
   "a8c2b705bbb43a80": "No matches found.",
+  "a437a9c8cae75437": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "on" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 7,
+      "c": [
+        { "t": "span", "i": 8, "c": "in" },
+        { "i": 9, "k": "_gt_value_9", "v": "v" }
+      ]
+    }
+  ],
+  "1a9a9821781da929": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "on" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    }
+  ],
+  "7d0edc7f2b04c7fe": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "across" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 7,
+      "c": [
+        { "t": "span", "i": 8, "c": "in" },
+        { "i": 9, "k": "_gt_value_9", "v": "v" }
+      ]
+    }
+  ],
+  "b7de78b08d2b4002": [
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        { "t": "span", "i": 2, "c": "Showing tasks for" },
+        { "i": 3, "k": "_gt_value_3", "v": "v" }
+      ]
+    },
+    {
+      "t": "span",
+      "i": 4,
+      "c": [
+        { "t": "span", "i": 5, "c": "across" },
+        { "i": 6, "k": "_gt_value_6", "v": "v" }
+      ]
+    }
+  ],
   "425f7ce2f24cb248": "Settings sections",
   "ee3e8bd8b7918aec": "Search",
   "858561b97fdd72f2": "Search settings",
@@ -11879,6 +11969,8 @@
   "4beeab8d1814b251": "Diffs & pull requests",
   "3b958faa12d54484": "Keybindings",
   "2ab325baee3ec9a3": "Scheduled tasks",
+  "8a7705186c3d58d8": "Scheduled tasks breadcrumb",
+  "df1fb90eb9a77fbf": "Scheduled tasks",
   "0a59e086514a62a9": "Source control & issues",
   "1de0df2b8a4fb96e": "Sharing & access",
   "4c70e3e7b3e6c493": "Secrets",

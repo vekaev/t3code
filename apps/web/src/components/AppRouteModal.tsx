@@ -21,9 +21,9 @@ import { DialogBackdrop } from "./ui/dialog";
 import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 
 /**
- * Large modal for the Settings and Usage routes. Esc, the close button, or a press on the
- * backdrop returns to the page that opened it. Keyboard guards that skip dialogs exempt
- * `[data-app-modal]`, because these pages own their shortcuts.
+ * Large modal for the Settings, Usage, and Scheduled tasks routes. Esc, the close button, or a
+ * press on the backdrop returns to the page that opened it. Keyboard guards that skip dialogs
+ * exempt `[data-app-modal]`, because these pages own their shortcuts.
  */
 export function AppRouteModal({
   label,

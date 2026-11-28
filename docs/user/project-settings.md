@@ -52,6 +52,7 @@ Enable **Settings → Source control & issues → Automatically pull** to fast-f
 
 Create and manage scheduled tasks in **Settings → Scheduled tasks** (web, desktop, and mobile).
 
+- **Open**: On web and desktop, also open **Scheduled tasks** from the sidebar or the command palette. For a shortcut, bind **Scheduled Tasks: Open** in **Settings → Keybindings**; it has no default.
 - **Schedules**: Recurring fixed-time schedules use the target environment's time zone. **Once** uses your local time zone (runs on reconnect if offline).
 - **Destination**: Choose **New thread each run**, **One thread (continue conversation)**, or **One thread (fresh session each run)**. Deleting a target thread deletes tasks bound to it; archiving a target thread causes runs to fail (settle it instead).
 - **Controls**: Edit, pause, resume, run now (except webhook tasks), or delete from the list.

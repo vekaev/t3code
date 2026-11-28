@@ -441,6 +441,26 @@ describe("ScheduledTasksSettings", () => {
       .toBeDisabled();
   });
 
+  it("closes a linked task's editor on the Scheduled tasks page without leaving it", async () => {
+    setup();
+    await using screen = await render(
+      <ScheduledTasksSettings environmentId={environmentId} taskId={task.id} />,
+      { router: `/scheduled-tasks?environmentId=${environmentId}&taskId=${task.id}` },
+    );
+    const dialog = page.getByRole("dialog");
+    await expect
+      .element(dialog.getByRole("textbox", { name: "Name" }))
+      .toHaveValue("Review issues");
+
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+
+    await expect.element(dialog).not.toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(screen.router!.state.location.pathname).toBe("/scheduled-tasks");
+      expect(screen.router!.state.location.search).toEqual({ environmentId });
+    });
+  });
+
   it("keeps an editor the user opened when the linked task loads later", async () => {
     setup();
     state.tasksLoaded = false;
